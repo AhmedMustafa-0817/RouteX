@@ -1,231 +1,1013 @@
 # ROUTEX
 
-### DSA-Based Supply & Shipment Management System
+## DSA-Based Supply & Shipment Management System
 
-ROUTEX is a C++ supply and shipment management system built as a Data Structures and Algorithms course project.
+ROUTEX is a C++-based logistics management system designed as a **Data Structures and Algorithms course project**.
 
-The system demonstrates how different data structures and algorithms can be combined to manage orders, calculate efficient shipment routes, and maintain a history of transactions.
+The system manages delivery orders, processes them using a queue, provides fast shipment lookup through hashing, represents transportation networks as weighted graphs, calculates the fastest city-to-city route using Dijkstra's algorithm with a min-heap, and maintains a tamper-evident shipment-event history using a blockchain implemented with linked blocks and SHA-256 hashing.
 
 ---
 
-## Core Features
+# 1. Project Purpose
 
-### 📦 Order Management
+ROUTEX addresses a simplified logistics problem:
 
-Orders are stored and managed using:
+A logistics organization manages multiple delivery orders moving between warehouses and cities. The system needs to:
 
-* Queue
-* Hash Table
+1. Organize incoming orders.
+2. Process orders in a defined order.
+3. Find shipments quickly.
+4. Represent the transportation network.
+5. Calculate the fastest route between two cities.
+6. Maintain a historical record of important shipment events.
+7. Detect unauthorized modification of previously recorded blockchain data.
 
-The queue handles order processing, while the hash table allows fast shipment/order searching.
+The project is primarily focused on applying **Data Structures and Algorithms to a real-world logistics scenario**.
 
-### 🗺️ Route Management
+Blockchain is used as a supporting integrity mechanism rather than as the entire purpose of the project.
 
-The transportation network is represented using a graph.
+---
 
-ROUTEX uses:
+# 2. Core Concepts
 
-* Graph
-* Min Heap
-* Dijkstra's Algorithm
+ROUTEX uses the following major DSA concepts.
 
-This allows the system to determine the shortest/fastest route between cities.
+| Concept              | Purpose in ROUTEX                               |
+| -------------------- | ----------------------------------------------- |
+| Queue                | FIFO management of delivery orders              |
+| Hash Table           | Fast shipment lookup by Shipment ID             |
+| Graph                | Representation of cities, warehouses and routes |
+| Min-Heap             | Priority structure used by Dijkstra             |
+| Dijkstra's Algorithm | Fastest route calculation                       |
+| Linked List          | Structure connecting blockchain blocks          |
+| Hashing              | Fast lookup through the hash table              |
+| SHA-256              | Cryptographic hashing for blockchain integrity  |
+| File Handling        | Saving/loading project data                     |
+| Big-O Analysis       | Evaluating algorithm efficiency                 |
 
-### 🔗 Transaction History
+---
 
-Shipment transactions are recorded using a blockchain-style structure.
+# 3. System Architecture
 
-This component uses:
+```text
+                         ROUTEX
+                            |
+          ┌─────────────────┼─────────────────┐
+          |                 |                 |
+       ORDERS             ROUTES           HISTORY
+          |                 |                 |
+       Queue              Graph          Blockchain
+          |                 |                 |
+     Hash Table         Min-Heap          Linked List
+          |                 |                 |
+   Shipment Search      Dijkstra          SHA-256
+                            |
+                      Fastest Route
+```
 
-* Linked List concepts
-* Blocks
+---
+
+# 4. Main Workflow
+
+```text
+Create Shipment
+      |
+      ↓
+Add to Queue
+      |
+      ↓
+Process Next Shipment
+      |
+      ├───────────────┐
+      ↓               ↓
+Hash Table        Blockchain
+      |               |
+Find Shipment    Record Event
+                      |
+                      ↓
+                 Create Block
+                      |
+                      ↓
+                  SHA-256
+```
+
+For route planning:
+
+```text
+Source City
+     |
+     ↓
+Weighted Graph
+     |
+     ↓
+Min-Heap
+     |
+     ↓
+Dijkstra
+     |
+     ↓
+Fastest Route
+     |
+     ↓
+Destination City
+```
+
+---
+
+# 5. Blockchain Design
+
+ROUTEX uses a small educational blockchain.
+
+The blockchain records shipment events such as:
+
+* Shipment created
+* Shipment dispatched
+* Shipment arrived at a warehouse
+* Shipment transferred to another warehouse
+* Shipment delivered
+
+A block can contain multiple transactions.
+
+Example:
+
+```text
+Block 3
+---------------------------------
+Transaction 1:
+SH101 CREATED - Karachi
+
+Transaction 2:
+SH101 DISPATCHED - Karachi
+
+Transaction 3:
+SH102 CREATED - Multan
+
+Previous Hash:
+ABC123
+
+Current Hash:
+XYZ789
+---------------------------------
+```
+
+Blocks are linked:
+
+```text
+Genesis
+   ↓
+Block 1
+   ↓
+Block 2
+   ↓
+Block 3
+```
+
+Each block stores:
+
+* Block index
+* Timestamp
 * Transactions
-* SHA-256 hashing
-
-The purpose is to demonstrate data integrity and chained transaction history.
-
----
-
-## Data Structures & Algorithms
-
-| Component           | Data Structure / Algorithm |
-| ------------------- | -------------------------- |
-| Order Processing    | Queue                      |
-| Order Search        | Hash Table                 |
-| City Network        | Graph                      |
-| Route Optimization  | Dijkstra's Algorithm       |
-| Priority Management | Min Heap                   |
-| Transaction History | Linked List / Blockchain   |
-| Data Integrity      | SHA-256                    |
+* Previous hash
+* Current hash
 
 ---
 
-## Project Structure
+# 6. Why Blockchain Is Used
+
+Blockchain is used to make the recorded shipment history **tamper-evident**.
+
+Suppose an original record says:
+
+```text
+SH101 arrived at Multan on Monday.
+```
+
+If somebody later changes it to:
+
+```text
+SH101 arrived at Multan on Tuesday.
+```
+
+the block's data changes.
+
+The SHA-256 hash is recalculated.
+
+If:
+
+```text
+Stored Hash != Recalculated Hash
+```
+
+the system reports:
+
+```text
+TAMPERING DETECTED
+```
+
+The blockchain therefore provides integrity checking for previously recorded events.
+
+---
+
+# 7. Important Limitation
+
+Blockchain does not automatically determine whether the information entered into the system was truthful.
+
+For example, if someone enters a false event correctly the first time, the blockchain does not know that the event was false.
+
+The blockchain's purpose in ROUTEX is primarily:
+
+> Detecting unauthorized modification of recorded historical data.
+
+---
+
+# 8. Hashing vs SHA-256
+
+ROUTEX uses hashing in two different ways.
+
+## Hash Table Hashing
+
+Used to find a shipment efficiently.
+
+```text
+Shipment ID
+     |
+  Hash Function
+     |
+   Index
+     |
+ Shipment
+```
+
+## SHA-256
+
+Used for blockchain integrity.
+
+```text
+Block Data
+    |
+ SHA-256
+    |
+Hash
+```
+
+These are different uses of hashing.
+
+---
+
+# 9. Fastest Route Calculation
+
+The logistics network is represented as a weighted graph.
+
+### Vertices
+
+Cities or warehouses.
+
+Example:
+
+```text
+Karachi
+Hyderabad
+Sukkur
+Multan
+Lahore
+Islamabad
+```
+
+### Edges
+
+Transport routes.
+
+### Edge Weight
+
+Travel time.
+
+For example:
+
+```text
+Karachi → Hyderabad = 3 hours
+Hyderabad → Sukkur = 5 hours
+Sukkur → Multan = 4 hours
+```
+
+Because the weights represent travel time, the system calculates the **fastest route**, not simply the route with the fewest cities.
+
+Dijkstra's algorithm is used to determine the minimum total travel time.
+
+---
+
+# 10. Order Queue
+
+Orders are processed using FIFO order.
+
+Example:
+
+```text
+FRONT
+  |
+  ↓
+SH101 → SH102 → SH103 → SH104
+                              ↑
+                             REAR
+```
+
+The first order added is processed first.
+
+---
+
+# 11. Project Folder Structure
 
 ```text
 routex-dsa/
 │
 ├── backend/
-│   ├── include/          # Header files
-│   ├── src/              # C++ implementations
-│   └── server/           # Backend/server code
+│   ├── include/
+│   │   ├── Order.h
+│   │   ├── Queue.h
+│   │   ├── HashTable.h
+│   │   ├── Graph.h
+│   │   ├── MinHeap.h
+│   │   ├── Dijkstra.h
+│   │   ├── Transaction.h
+│   │   ├── Block.h
+│   │   ├── Blockchain.h
+│   │   └── SHA256.h
+│   │
+│   ├── src/
+│   │   ├── main.cpp
+│   │   ├── Order.cpp
+│   │   ├── Queue.cpp
+│   │   ├── HashTable.cpp
+│   │   ├── Graph.cpp
+│   │   ├── MinHeap.cpp
+│   │   ├── Dijkstra.cpp
+│   │   ├── Transaction.cpp
+│   │   ├── Block.cpp
+│   │   ├── Blockchain.cpp
+│   │   └── SHA256.cpp
+│   │
+│   └── server/
+│       └── Server.cpp
 │
 ├── frontend/
 │   ├── index.html
 │   ├── css/
+│   │   └── style.css
 │   └── js/
+│       ├── app.js
+│       ├── orders.js
+│       ├── routes.js
+│       └── blockchain.js
 │
-├── data/                 # Input datasets
+├── data/
+│   ├── orders.csv
+│   └── routes.csv
 │
-├── tests/                # Data structure and algorithm tests
+├── tests/
+│   ├── test_queue.cpp
+│   ├── test_hash_table.cpp
+│   ├── test_graph.cpp
+│   ├── test_dijkstra.cpp
+│   └── test_blockchain.cpp
 │
-├── docs/                 # Project documentation
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── COMPLEXITY_ANALYSIS.md
+│   └── TEAM_WORKFLOW.md
 │
 ├── .github/
 │   └── pull_request_template.md
 │
+├── .gitignore
 ├── CMakeLists.txt
 ├── CONTRIBUTING.md
-├── README.md
-└── .gitignore
+└── README.md
 ```
 
 ---
 
-## Requirements
+# 12. Development Environment
 
-Before building ROUTEX, make sure the following are installed:
+## Windows
+
+Recommended setup:
 
 * Git
-* C++ compiler with C++17 support
-* CMake 3.20 or newer
+* Visual Studio
+* Desktop development with C++
+* CMake
 
-macOS users can use Apple's Clang compiler.
+The project is built using CMake.
+
+Typical commands:
+
+```powershell
+git clone YOUR_REPOSITORY_URL
+cd routex-dsa
+
+git fetch origin
+git switch develop
+
+cmake -B build
+cmake --build build
+```
+
+For Visual Studio multi-configuration builds, the executable may be placed under a configuration directory such as:
+
+```text
+build/Debug/
+```
+
+Run the resulting executable from the appropriate configuration folder.
 
 ---
 
-## Building the Project
+# 13. Mac
 
-Clone the repository:
+Recommended setup:
+
+* Xcode Command Line Tools
+* Clang
+* CMake
+* Git
+* Visual Studio Code
+* GitHub CLI
+
+Check Git:
 
 ```bash
-git clone https://github.com/AhmedMustafa-0817/RouteX.git
-cd routex-dsa
+git --version
 ```
 
-Switch to the development branch:
+Check compiler:
 
 ```bash
-git switch develop
+clang++ --version
 ```
 
-Create a build directory:
+Check CMake:
 
 ```bash
-mkdir build
-cd build
+cmake --version
 ```
 
-Configure the project:
+Authenticate GitHub CLI:
 
 ```bash
-cmake ..
+gh auth login
+```
+
+Configure Git:
+
+```bash
+gh auth setup-git
+```
+
+Clone:
+
+```bash
+git clone YOUR_REPOSITORY_URL
 ```
 
 Build:
 
 ```bash
-cmake --build .
+cmake -B build
+cmake --build build
 ```
 
-The exact executable name may change as development continues.
+Run:
+
+```bash
+./build/routex
+```
 
 ---
 
-## Development Workflow
+# 14. CMake
 
-The `main` branch contains the stable version of the project.
+ROUTEX uses CMake to keep the build process consistent across different operating systems.
 
-The `develop` branch contains the team's current working version.
+The normal build process is:
 
-Individual features should be developed using feature branches.
+```text
+Source Code
+    |
+    ↓
+CMake
+    |
+    ↓
+build/
+    |
+    ↓
+Executable
+```
 
-Example:
+The `build/` directory is generated automatically and should not be committed to GitHub.
+
+---
+
+# 15. Git Branch Strategy
+
+The main branches are:
+
+```text
+main
+develop
+```
+
+### main
+
+Stable and submission-ready code.
+
+### develop
+
+Integrated development version.
+
+### Feature branches
+
+Individual tasks are implemented separately.
+
+Examples:
+
+```text
+feature/order-queue
+feature/hash-table
+feature/graph
+feature/min-heap
+feature/dijkstra
+feature/blockchain-core
+feature/sha256
+feature/blockchain-validation
+feature/frontend
+feature/testing
+```
+
+---
+
+# 16. Git Workflow
+
+Always start by updating `develop`.
 
 ```bash
 git switch develop
 git pull origin develop
-
-git switch -c feature/order-queue
 ```
 
-After completing the feature:
+Create your feature branch:
+
+```bash
+git switch -c feature/your-feature
+```
+
+Work on the feature.
+
+Check changes:
+
+```bash
+git status
+```
+
+Stage:
 
 ```bash
 git add .
-git commit -m "Implement order queue"
-
-git push -u origin feature/order-queue
 ```
 
-Then open a Pull Request targeting:
+Commit:
+
+```bash
+git commit -m "Describe the change"
+```
+
+Push:
+
+```bash
+git push -u origin feature/your-feature
+```
+
+Then open a Pull Request:
 
 ```text
-develop
+feature/your-feature
+        ↓
+     develop
 ```
 
-Do not directly push feature work to `main`.
+The feature should be reviewed before being merged.
 
 ---
 
-## Team
+# 17. Pull Request Rules
 
-### Developers
+Every Pull Request should:
 
-* Ahmed Mustafa
-* Jawwad
-* Hania
+1. Have a meaningful title.
+2. Explain what changed.
+3. Explain what was tested.
+4. Compile successfully.
+5. Avoid unrelated changes.
+6. Be reviewed by another team member.
 
-Each team member should work using their own GitHub account.
+Example title:
+
+```text
+Implement FIFO shipment queue
+```
+
+Example description:
+
+```text
+Implemented the Order and Queue classes.
+
+Added:
+- enqueue()
+- dequeue()
+- front()
+- isEmpty()
+- display()
+
+Tested:
+- Empty queue
+- One order
+- Multiple orders
+```
 
 ---
 
-## Project Scope
+# 18. Commit Message Examples
 
-ROUTEX intentionally focuses on Data Structures and Algorithms.
+Good:
 
-The project does **not** include:
+```text
+Initialize ROUTEX project structure
+Implement FIFO shipment queue
+Implement separate chaining hash table
+Add weighted logistics graph
+Implement min heap
+Implement Dijkstra route calculation
+Implement blockchain block structure
+Add SHA-256 hashing
+Add blockchain validation
+Connect shipment events to blockchain
+```
+
+Avoid vague messages such as:
+
+```text
+Changes
+Update
+Final
+Done
+Stuff
+```
+
+---
+
+# 19. Coding Rules
+
+## Rule 1
+
+Do not directly develop on `main`.
+
+## Rule 2
+
+Do not commit generated build files.
+
+## Rule 3
+
+Do not commit passwords, tokens, or private credentials.
+
+## Rule 4
+
+One feature should normally correspond to one feature branch.
+
+## Rule 5
+
+Keep `.h` declarations separate from `.cpp` implementations.
+
+## Rule 6
+
+Do not place the entire project inside `main.cpp`.
+
+## Rule 7
+
+Test every DSA implementation.
+
+## Rule 8
+
+Do not change another member's code without discussing the integration.
+
+## Rule 9
+
+Pull the latest `develop` before starting new work.
+
+## Rule 10
+
+A broken feature should not be merged simply to finish the day.
+
+---
+
+# 20. Team
+
+Project:
+
+**ROUTEX**
+
+Team members:
+
+```text
+Ahmed Mustafa
+Jawwad
+Hania
+```
+
+Daily rotation:
+
+```text
+Day 1  Ahmed
+Day 2  Jawwad
+Day 3  Hania
+
+Day 4  Ahmed
+Day 5  Jawwad
+Day 6  Hania
+
+Day 7  Ahmed
+Day 8  Jawwad
+Day 9  Hania
+
+Day 10 Ahmed
+Day 11 Jawwad
+Day 12 Hania
+
+Day 13 Ahmed
+Day 14 Jawwad
+Day 15 Hania
+```
+
+The owner of a day is responsible for completing the assigned task and providing a clear handoff.
+
+---
+
+# 21. Build Order
+
+ROUTEX should be built in this order:
+
+```text
+1. Order
+   ↓
+2. Queue
+   ↓
+3. Hash Table
+   ↓
+4. Graph
+   ↓
+5. Min-Heap
+   ↓
+6. Dijkstra
+   ↓
+7. Blockchain
+   ↓
+8. SHA-256
+   ↓
+9. Blockchain Validation
+   ↓
+10. System Integration
+   ↓
+11. Persistence
+   ↓
+12. Backend Interface
+   ↓
+13. Frontend
+   ↓
+14. Testing
+   ↓
+15. Final Integration
+```
+
+This order is intentional.
+
+---
+
+# 22. Testing Requirements
+
+Every major DSA component must have tests.
+
+### Queue
+
+Test:
+
+* Empty queue
+* One element
+* Multiple elements
+* Dequeue from empty queue
+* FIFO order
+
+### Hash Table
+
+Test:
+
+* Insert
+* Search
+* Missing shipment
+* Duplicate shipment ID
+* Collision handling
+
+### Graph
+
+Test:
+
+* Add city
+* Add route
+* Multiple connections
+* Invalid city
+
+### Dijkstra
+
+Test:
+
+* Normal route
+* Multiple possible routes
+* Same source and destination
+* Unreachable destination
+
+### Blockchain
+
+Test:
+
+* Genesis block
+* Adding blocks
+* Hash generation
+* Previous hash linkage
+* Valid chain
+* Tampered chain
+
+---
+
+# 23. Final Demonstration
+
+The final presentation should demonstrate one complete shipment scenario.
+
+Example:
+
+```text
+Shipment ID:
+SH101
+
+Source:
+Karachi
+
+Destination:
+Lahore
+```
+
+Add several orders:
+
+```text
+SH101
+SH102
+SH103
+SH104
+```
+
+Show:
+
+```text
+Queue:
+SH101 → SH102 → SH103 → SH104
+```
+
+Process the first order.
+
+Show shipment lookup:
+
+```text
+Search SH101
+        ↓
+Hash Table
+```
+
+Record event:
+
+```text
+SH101 CREATED
+```
+
+Add the transaction to the blockchain.
+
+Calculate route:
+
+```text
+Karachi → Lahore
+        ↓
+Dijkstra
+        ↓
+Fastest Route
+```
+
+Verify blockchain:
+
+```text
+BLOCKCHAIN VALID
+```
+
+Then demonstrate tampering on a test record.
+
+Change:
+
+```text
+Monday → Tuesday
+```
+
+Run verification.
+
+Expected result:
+
+```text
+TAMPERING DETECTED
+```
+
+---
+
+# 24. Out of Scope
+
+The following are intentionally not part of ROUTEX:
 
 * Machine Learning
 * GPS tracking
-* Online payments
-* Authentication systems
 * Cryptocurrency
+* Mining
 * Smart contracts
-* AI prediction
+* Payment processing
+* Complex authentication
+* AI route prediction
+* Mobile application
+* External logistics APIs
+* Real government or commercial transport databases
 
-The goal is to demonstrate practical use of DSA rather than adding unrelated technologies.
+The purpose is to keep the project focused on DSA, algorithms, software structure, and a small supporting blockchain component.
 
 ---
 
-## Documentation
+# 25. Learning Outcomes
 
-Additional project documentation will be maintained in:
+By completing ROUTEX, the team should understand:
+
+* Practical use of queues.
+* Practical use of hash tables.
+* Collision handling.
+* Graph representation.
+* Priority queues and heaps.
+* Dijkstra's algorithm.
+* Linked-list implementation.
+* Hashing.
+* SHA-256.
+* Blockchain data structure.
+* Blockchain integrity validation.
+* File handling.
+* C++ modular design.
+* CMake.
+* Git and GitHub collaboration.
+* Branching and Pull Requests.
+* Basic frontend/backend integration.
+* Algorithmic complexity.
+
+---
+
+# 26. Final Goal
+
+ROUTEX should demonstrate that Data Structures and Algorithms are not only theoretical topics.
+
+The project shows how:
 
 ```text
-docs/
+Queue
+    ↓
+Order Management
+
+Hash Table
+    ↓
+Fast Shipment Search
+
+Graph
+    ↓
+Transportation Network
+
+Min-Heap
+    ↓
+Efficient Priority Selection
+
+Dijkstra
+    ↓
+Fastest Route
+
+Linked List
+    ↓
+Blockchain Structure
+
+SHA-256
+    ↓
+Integrity Verification
 ```
 
-Important documents include:
-
-* `ARCHITECTURE.md`
-* `COMPLEXITY_ANALYSIS.md`
-* `TEAM_WORKFLOW.md`
-
----
-
-## Status
-
-🚧 **Under Development**
-
-The repository currently contains the project skeleton. Individual components will be implemented incrementally.
+can work together inside one practical logistics system.
