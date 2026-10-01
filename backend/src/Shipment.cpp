@@ -1,6 +1,5 @@
 #include "../include/Shipment.h"
 #include <iostream>
-
 Shipment::Shipment()
 {
     shipmentID = 0;
