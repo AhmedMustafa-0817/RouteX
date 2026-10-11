@@ -1,6 +1,11 @@
+
 #include "../include/Graph.h"
+
 #include <iostream>
+
 using namespace std;
+
+// Constructor for an edge between two cities.
 CityGraph::EdgeNode::EdgeNode(CityNode* city, int time)
 {
     destination = city;
@@ -8,18 +13,26 @@ CityGraph::EdgeNode::EdgeNode(CityNode* city, int time)
     next = nullptr;
 }
 
+// Constructor for a city node.
 CityGraph::CityNode::CityNode(const string& cityName)
 {
     name = cityName;
     neighbors = nullptr;
     next = nullptr;
+    index = -1;
 }
+
+// Constructor for the graph.
 CityGraph::CityGraph()
 {
     head = nullptr;
+    cityCount = 0;
 }
+
+// Find a city using its name.
 CityGraph::CityNode* CityGraph::findCity(
-    const string& name) const
+    const string& name
+) const
 {
     CityNode* current = head;
 
@@ -35,8 +48,12 @@ CityGraph::CityNode* CityGraph::findCity(
 
     return nullptr;
 }
+
+// Find an edge from one city to another.
 CityGraph::EdgeNode* CityGraph::findEdge(
-    CityNode* city, CityNode* destination) const
+    CityNode* city,
+    CityNode* destination
+) const
 {
     if (city == nullptr || destination == nullptr)
     {
@@ -57,6 +74,8 @@ CityGraph::EdgeNode* CityGraph::findEdge(
 
     return nullptr;
 }
+
+// Add a city to the graph.
 bool CityGraph::addCity(const string& name)
 {
     if (name.empty() || findCity(name) != nullptr)
@@ -65,6 +84,10 @@ bool CityGraph::addCity(const string& name)
     }
 
     CityNode* newCity = new CityNode(name);
+
+    // Assign a unique index for Dijkstra's arrays.
+    newCity->index = cityCount;
+    cityCount++;
 
     if (head == nullptr)
     {
@@ -80,13 +103,18 @@ bool CityGraph::addCity(const string& name)
     }
 
     current->next = newCity;
+
     return true;
 }
+
+// Add or update a two-way route.
 bool CityGraph::addEdge(
     const string& city1,
     const string& city2,
-    int travelTime)
+    int travelTime
+)
 {
+    // Travel time must be positive.
     if (travelTime <= 0 || city1 == city2)
     {
         return false;
@@ -102,7 +130,9 @@ bool CityGraph::addEdge(
 
     EdgeNode* firstEdge = findEdge(firstCity, secondCity);
     EdgeNode* secondEdge = findEdge(secondCity, firstCity);
-        if (firstEdge != nullptr || secondEdge != nullptr)
+
+    // If either direction already exists, update existing edges.
+    if (firstEdge != nullptr || secondEdge != nullptr)
     {
         if (firstEdge != nullptr)
         {
@@ -116,6 +146,8 @@ bool CityGraph::addEdge(
 
         return true;
     }
+
+    // Create the forward edge.
     EdgeNode* forward = new EdgeNode(secondCity, travelTime);
 
     EdgeNode* backward = nullptr;
@@ -130,14 +162,18 @@ bool CityGraph::addEdge(
         throw;
     }
 
+    // Insert the forward edge at the beginning of city1's list.
     forward->next = firstCity->neighbors;
     firstCity->neighbors = forward;
 
+    // Insert the backward edge at the beginning of city2's list.
     backward->next = secondCity->neighbors;
     secondCity->neighbors = backward;
 
     return true;
 }
+
+// Display every city and its neighboring routes.
 void CityGraph::displayGraph() const
 {
     CityNode* currentCity = head;
@@ -168,9 +204,12 @@ void CityGraph::displayGraph() const
         }
 
         cout << endl;
+
         currentCity = currentCity->next;
     }
 }
+
+// Destructor: free every edge and city node.
 CityGraph::~CityGraph()
 {
     CityNode* currentCity = head;
@@ -183,11 +222,13 @@ CityGraph::~CityGraph()
         {
             EdgeNode* tempEdge = currentEdge;
             currentEdge = currentEdge->next;
+
             delete tempEdge;
         }
 
         CityNode* tempCity = currentCity;
         currentCity = currentCity->next;
+
         delete tempCity;
     }
 }
