@@ -1,9 +1,9 @@
-
 #ifndef BLOCK_H
 #define BLOCK_H
 
 #include <string>
 #include "TransferEvent.h"
+
 using namespace std;
 
 class Block
@@ -13,9 +13,9 @@ private:
     {
     public:
         TransferEvent event;
-        EventNode *next;
+        EventNode* next;
 
-        EventNode(TransferEvent event);
+        EventNode(TransferEvent newEvent);
     };
 
     int index;
@@ -23,19 +23,23 @@ private:
     string previousHash;
     string currentHash;
 
-    EventNode *eventHead;
-    EventNode *eventTail;
+    EventNode* eventHead;
+    EventNode* eventTail;
     int eventCount;
 
-    Block *next;
+    Block* next;
 
 public:
     Block();
     Block(int index, string timestamp, string previousHash);
-
     ~Block();
 
+    Block(const Block&) = delete;
+    Block& operator=(const Block&) = delete;
+
     bool addEvent(TransferEvent event);
+    TransferEvent* getEventAt(int position);
+
     void display();
 
     int getIndex();
@@ -43,10 +47,12 @@ public:
     string getPreviousHash();
     string getCurrentHash();
     int getEventCount();
-    Block *getNext();
+
+    Block* getNext();
 
     void setCurrentHash(string hash);
-    void setNext(Block *nextBlock);
+    void setPreviousHash(string hash);
+    void setNext(Block* nextBlock);
 };
 
 #endif
