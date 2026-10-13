@@ -21,6 +21,7 @@ Blockchain::Blockchain()
     head = NULL;
     tail = NULL;
     blockCount = 0;
+    lastVerificationError = "Chain has not been verified yet.";
 
     Block* genesis = new Block(0, "GENESIS", "0");
 
@@ -69,7 +70,7 @@ string Blockchain::serializeBlock(Block* block)
         if (event != NULL)
         {
             data << event->getTransactionID() << "|";
-data << event->getShipmentID() << "|";
+            data << event->getShipmentID() << "|";
             data << encodeString(event->getEventType());
             data << encodeString(event->getLocation());
             data << encodeString(event->getTimestamp());
@@ -87,17 +88,13 @@ string Blockchain::calculateBlockHash(Block* block)
 
 bool Blockchain::addBlock(Block* block)
 {
-    if (block == NULL)
+    if (block == NULL || head == NULL || tail == NULL)
     {
         return false;
     }
 
-    if (block == head || block->getNext() != NULL)
-    {
-        return false;
-    }
-
-    if (tail == NULL)
+    // Do not add an existing block or a block already linked to others.
+    if (block == head || block == tail || block->getNext() != NULL)
     {
         return false;
     }
@@ -107,10 +104,10 @@ bool Blockchain::addBlock(Block* block)
         return false;
     }
 
-
+    // Link the new block to the current last block.
     block->setPreviousHash(tail->getCurrentHash());
 
-  
+    // Calculate its hash after setting previousHash.
     block->setCurrentHash(calculateBlockHash(block));
 
     tail->setNext(block);
@@ -132,6 +129,7 @@ bool Blockchain::addTransaction(TransferEvent event)
         return false;
     }
 
+    // Adding an event changes this block's contents.
     tail->setCurrentHash(calculateBlockHash(tail));
 
     return true;
@@ -139,18 +137,37 @@ bool Blockchain::addTransaction(TransferEvent event)
 
 bool Blockchain::verifyChain()
 {
-    if (head == NULL || tail == NULL || blockCount <= 0)
+    lastVerificationError = "";
+
+    if (head == NULL)
     {
+        lastVerificationError = "Chain has no genesis block.";
+        return false;
+    }
+
+    if (tail == NULL)
+    {
+        lastVerificationError = "Chain has no tail block.";
+        return false;
+    }
+
+    if (blockCount <= 0)
+    {
+        lastVerificationError = "Stored block count is invalid.";
         return false;
     }
 
     if (head->getIndex() != 0)
     {
+        lastVerificationError =
+            "Genesis block must have index 0.";
         return false;
     }
 
     if (head->getPreviousHash() != "0")
     {
+        lastVerificationError =
+            "Genesis block previousHash must be 0.";
         return false;
     }
 
@@ -160,50 +177,79 @@ bool Blockchain::verifyChain()
 
     while (current != NULL)
     {
-        actualCount++;
-
-
-        if (current->getIndex() != actualCount - 1)
+        // Stops verification if the list cycles or its count is wrong.
+        if (actualCount >= blockCount)
         {
+            lastVerificationError =
+                "Cycle detected or stored block count is too small.";
             return false;
         }
 
+        if (current->getIndex() != actualCount)
+        {
+            lastVerificationError =
+                "Block " + to_string(current->getIndex())
+                + ": incorrect block index.";
+            return false;
+        }
+
+        // Check that this block links to the preceding block.
         if (previous != NULL)
         {
             if (current->getPreviousHash() !=
                 previous->getCurrentHash())
             {
+                lastVerificationError =
+                    "Block " + to_string(current->getIndex())
+                    + ": previous hash mismatch.";
                 return false;
             }
         }
 
+        // Recalculate the hash from the block's current contents.
         string recalculatedHash = calculateBlockHash(current);
 
         if (current->getCurrentHash() != recalculatedHash)
         {
+            lastVerificationError =
+                "Block " + to_string(current->getIndex())
+                + ": current hash mismatch. Data may have been changed.";
             return false;
         }
 
+        actualCount++;
         previous = current;
         current = current->getNext();
     }
 
     if (actualCount != blockCount)
     {
+        lastVerificationError =
+            "Stored block count does not match linked-list length.";
         return false;
     }
 
     if (previous != tail)
     {
+        lastVerificationError =
+            "Tail pointer does not point to the final block.";
         return false;
     }
 
     if (tail->getNext() != NULL)
     {
+        lastVerificationError =
+            "Tail block must not point to another block.";
         return false;
     }
 
+    lastVerificationError = "Chain verified successfully.";
     return true;
+}
+
+string Blockchain::getLastVerificationError()
+{
+    return lastVerificationError;
 }
 
 void Blockchain::display()
@@ -217,8 +263,12 @@ void Blockchain::display()
     }
 
     cout << "\nTotal Blocks: " << blockCount << endl;
-    cout << "Chain Valid: "
-         << (verifyChain() ? "YES" : "NO") << endl;
+
+    bool valid = verifyChain();
+
+    cout << "Chain Valid: " << (valid ? "YES" : "NO") << endl;
+    cout << "Verification Result: "
+         << getLastVerificationError() << endl;
 }
 
 Block* Blockchain::getHead()
