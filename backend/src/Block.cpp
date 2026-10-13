@@ -1,13 +1,11 @@
-
-#include "../include/Block.h"
+#include "Block.h"
 #include <iostream>
 
 using namespace std;
 
-Block::EventNode::EventNode(TransferEvent event)
+Block::EventNode::EventNode(TransferEvent newEvent)
+    : event(newEvent), next(NULL)
 {
-    this->event = event;
-    next = nullptr;
 }
 
 Block::Block()
@@ -15,55 +13,56 @@ Block::Block()
     index = 0;
     timestamp = "";
     previousHash = "0";
-    currentHash = "PENDING";
+    currentHash = "";
 
-    eventHead = nullptr;
-    eventTail = nullptr;
+    eventHead = NULL;
+    eventTail = NULL;
     eventCount = 0;
 
-    next = nullptr;
+    next = NULL;
 }
 
-Block::Block(int index, string timestamp, string previousHash)
+Block::Block(int blockIndex, string blockTimestamp,
+             string blockPreviousHash)
 {
-    this->index = index;
-    this->timestamp = timestamp;
-    this->previousHash = previousHash;
-    currentHash = "PENDING";
+    index = blockIndex;
+    timestamp = blockTimestamp;
+    previousHash = blockPreviousHash;
+    currentHash = "";
 
-    eventHead = nullptr;
-    eventTail = nullptr;
+    eventHead = NULL;
+    eventTail = NULL;
     eventCount = 0;
 
-    next = nullptr;
+    next = NULL;
 }
 
 Block::~Block()
 {
-    EventNode *current = eventHead;
+    EventNode* current = eventHead;
 
-    while (current != nullptr)
+    while (current != NULL)
     {
-        EventNode *temporary = current;
+        EventNode* temporary = current;
         current = current->next;
         delete temporary;
     }
 
-    eventHead = nullptr;
-    eventTail = nullptr;
+    eventHead = NULL;
+    eventTail = NULL;
     eventCount = 0;
 }
 
 bool Block::addEvent(TransferEvent event)
 {
-    EventNode *newNode = new EventNode(event);
+    EventNode* newNode = new EventNode(event);
 
-    if (newNode == nullptr)
+    if (newNode == NULL)
     {
         return false;
     }
 
-    if (eventHead == nullptr)
+    if (eventHead == NULL)
     {
         eventHead = newNode;
         eventTail = newNode;
@@ -78,24 +77,45 @@ bool Block::addEvent(TransferEvent event)
     return true;
 }
 
+TransferEvent* Block::getEventAt(int position)
+{
+    if (position < 0 || position >= eventCount)
+    {
+        return NULL;
+    }
+
+    EventNode* current = eventHead;
+
+    for (int i = 0; i < position; i++)
+    {
+        current = current->next;
+    }
+
+    return &(current->event);
+}
+
 void Block::display()
 {
-    cout << "Block Index: " << index << endl;
+    cout << "\n========== BLOCK ==========\n";
+    cout << "Index: " << index << endl;
     cout << "Timestamp: " << timestamp << endl;
     cout << "Previous Hash: " << previousHash << endl;
     cout << "Current Hash: " << currentHash << endl;
     cout << "Event Count: " << eventCount << endl;
 
-    cout << "--- Events ---" << endl;
+    EventNode* current = eventHead;
+    int number = 1;
 
-    EventNode *current = eventHead;
-
-    while (current != nullptr)
+    while (current != NULL)
     {
+        cout << "\nEvent " << number << ":\n";
         current->event.display();
-        cout << "----------------" << endl;
+
         current = current->next;
+        number++;
     }
+
+    cout << "===========================\n";
 }
 
 int Block::getIndex()
@@ -123,7 +143,7 @@ int Block::getEventCount()
     return eventCount;
 }
 
-Block *Block::getNext()
+Block* Block::getNext()
 {
     return next;
 }
@@ -133,7 +153,12 @@ void Block::setCurrentHash(string hash)
     currentHash = hash;
 }
 
-void Block::setNext(Block *nextBlock)
+void Block::setPreviousHash(string hash)
+{
+    previousHash = hash;
+}
+
+void Block::setNext(Block* nextBlock)
 {
     next = nextBlock;
 }
