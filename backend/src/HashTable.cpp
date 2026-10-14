@@ -143,3 +143,24 @@ void HashTable::display()
         cout << endl;
     }
 }
+int HashTable::getAllShipments(Shipment shipments[], int capacity)
+{
+    int count = 0;
+
+    for (int i = 0; i < bucketCount; i++)
+    {
+        HashNode *current = buckets[i];
+
+        while (current != nullptr && count < capacity)
+        {
+            shipments[count] = current->shipment;
+            count++;
+            current = current->next;
+        }
+
+        if (count >= capacity)
+            break;
+    }
+
+    return count;
+}

@@ -1,0 +1,3 @@
+shipmentID,sourceCity,destinationCity,packageType,weight,status
+103,Karachi,Hyderabad,Electronics,2.5,CREATED
+104,Lahore,Islamabad,Documents,0.5,PENDING

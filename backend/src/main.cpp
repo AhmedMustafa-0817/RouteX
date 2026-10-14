@@ -1,93 +1,72 @@
-#include "Blockchain.h"
 
+#include "../include/ShipmentManager.h"
 #include <iostream>
 
 using namespace std;
 
 int main()
 {
-    Blockchain chain;
+    ShipmentManager manager;
 
-    // Create Block 1 with a shipment event.
-    Block* firstBlock =
-        new Block(1, "2026-10-13 10:00:00", "");
+    cout << "===== ROUTEX SHIPMENT LIFECYCLE =====\n\n";
 
-    TransferEvent firstEvent(
-        101, 103, "DISPATCHED", "Karachi",
-        "2026-10-13 10:00:00", "In Transit"
-    );
+    // 1. Create shipments.
+    Shipment s1(
+        201, "Karachi", "Hyderabad",
+        "Electronics", 2.5, "CREATED");
 
-    if (!firstBlock->addEvent(firstEvent))
-    {
-        delete firstBlock;
-        cout << "Could not add the first event.\n";
-        return 1;
-    }
+    Shipment s2(
+        202, "Lahore", "Islamabad",
+        "Documents", 0.5, "CREATED");
 
-    if (!chain.addBlock(firstBlock))
-    {
-        delete firstBlock;
-        cout << "Could not add Block 1.\n";
-        return 1;
-    }
+    manager.createShipment(s1);
+    manager.createShipment(s2);
 
-    // Create Block 2 with another event.
-    Block* secondBlock =
-        new Block(2, "2026-10-13 12:00:00", "");
+    // 2. Search through the custom hash table.
+    cout << "\n===== SEARCH SHIPMENT =====\n";
 
-    TransferEvent secondEvent(
-        102, 103, "ARRIVED", "Hyderabad",
-        "2026-10-13 12:00:00", "Arrived at hub"
-    );
+    Shipment *found = manager.searchShipment(201);
 
-    if (!secondBlock->addEvent(secondEvent))
-    {
-        delete secondBlock;
-        cout << "Could not add the second event.\n";
-        return 1;
-    }
-
-    if (!chain.addBlock(secondBlock))
-    {
-        delete secondBlock;
-        cout << "Could not add Block 2.\n";
-        return 1;
-    }
-
-    cout << "===== ORIGINAL BLOCKCHAIN =====\n";
-
-    if (chain.verifyChain())
-    {
-        cout << "VALID: " << chain.getLastVerificationError() << endl;
-    }
+    if (found != nullptr)
+        found->display();
     else
+        cout << "Shipment not found.\n";
+
+    // 3. Process the first shipment in FIFO order.
+    cout << "\n===== PROCESS SHIPMENT =====\n";
+    manager.processNextShipment();
+
+    // 4. Record arrival and update shipment status.
+    cout << "\n===== RECORD ARRIVAL =====\n";
+    manager.recordArrival(201, "Hyderabad");
+
+    // 5. Display the blockchain and verify its integrity.
+    cout << "\n===== BLOCKCHAIN =====\n";
+    manager.displayBlockchain();
+
+    // 6. Save current shipment records.
+    cout << "\n===== SAVE SHIPMENTS =====\n";
+
+    if (!manager.saveAll("data/demo_shipments.csv"))
     {
-        cout << "INVALID: " << chain.getLastVerificationError() << endl;
+        cout << "Failed to save shipments.\n";
         return 1;
     }
 
-    // Simulate an unauthorized change to an older event.
-    TransferEvent* oldEvent = firstBlock->getEventAt(0);
+    // 7. Reload shipment records into a fresh manager.
+    cout << "\n===== RELOAD SHIPMENTS =====\n";
 
-    if (oldEvent == NULL)
+    ShipmentManager restoredManager;
+
+    if (!restoredManager.loadAll("data/demo_shipments.csv"))
     {
-        cout << "Could not find the event to test.\n";
+        cout << "Failed to reload shipments.\n";
         return 1;
     }
 
-    oldEvent->setLocation("Lahore");
+    restoredManager.displayShipments();
 
-    cout << "\n===== AFTER TAMPERING =====\n";
-
-    if (chain.verifyChain())
-    {
-        cout << "VALID: No modification detected.\n";
-    }
-    else
-    {
-        cout << "TAMPERING DETECTED: "
-             << chain.getLastVerificationError() << endl;
-    }
+    cout << "\n===== DEMO COMPLETE =====\n";
 
     return 0;
 }

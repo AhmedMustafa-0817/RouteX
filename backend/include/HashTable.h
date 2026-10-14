@@ -27,6 +27,7 @@ public:
     bool insert(Shipment shipment);
     Shipment *search(int shipmentID);
     bool remove(int shipmentID);
+    int getAllShipments(Shipment shipments[], int capacity);
     void display();
 };
 
