@@ -13,6 +13,8 @@ private:
     Block* tail;
     int blockCount;
 
+    string lastVerificationError;
+
     string serializeBlock(Block* block);
     string calculateBlockHash(Block* block);
 
@@ -26,6 +28,7 @@ public:
     bool addBlock(Block* block);
     bool addTransaction(TransferEvent event);
     bool verifyChain();
+    string getLastVerificationError();
 
     void display();
 

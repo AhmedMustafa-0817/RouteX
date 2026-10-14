@@ -29,6 +29,10 @@ public:
     string getTimestamp();
     string getStatus();
 
+    void setLocation(string newLocation);
+    void setTimestamp(string newTimestamp);
+    void setStatus(string newStatus);
+
     void display();
 };
 

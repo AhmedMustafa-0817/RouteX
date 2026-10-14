@@ -9,10 +9,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-include_directories(backend/include)
+enable_testing()
 
-set(SOURCES
-    backend/src/main.cpp
+# Sources used by the main application.
+set(ROUTEX_SOURCES
     backend/src/Order.cpp
     backend/src/Queue.cpp
     backend/src/HashTable.cpp
@@ -20,9 +20,35 @@ set(SOURCES
     backend/src/MinHeap.cpp
     backend/src/Dijkstra.cpp
     backend/src/Transaction.cpp
+    backend/src/TransferEvent.cpp
     backend/src/Block.cpp
     backend/src/Blockchain.cpp
     backend/src/SHA256.cpp
 )
 
-add_executable(routex ${SOURCES})
+add_executable(routex
+    backend/src/main.cpp
+    ${ROUTEX_SOURCES}
+)
+
+target_include_directories(routex PRIVATE
+    backend/include
+)
+
+# A separate executable dedicated to blockchain testing.
+add_executable(test_blockchain
+    backend/tests/test_blockchain.cpp
+    backend/src/Block.cpp
+    backend/src/TransferEvent.cpp
+    backend/src/Blockchain.cpp
+    backend/src/SHA256.cpp
+)
+
+target_include_directories(test_blockchain PRIVATE
+    backend/include
+)
+
+add_test(
+    NAME blockchain_tests
+    COMMAND test_blockchain
+)

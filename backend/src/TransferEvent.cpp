@@ -63,3 +63,18 @@ void TransferEvent::display()
     cout << "Timestamp: " << timestamp << endl;
     cout << "Status: " << status << endl;
 }
+
+void TransferEvent::setLocation(string newLocation)
+{
+    location = newLocation;
+}
+
+void TransferEvent::setTimestamp(string newTimestamp)
+{
+    timestamp = newTimestamp;
+}
+
+void TransferEvent::setStatus(string newStatus)
+{
+    status = newStatus;
+}
