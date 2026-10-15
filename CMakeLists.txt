@@ -14,6 +14,9 @@ enable_testing()
 # Sources used by the main application.
 set(ROUTEX_SOURCES
     backend/src/Order.cpp
+    backend/src/Shipment.cpp
+    backend/src/Storage.cpp
+    backend/src/ShipmentManager.cpp
     backend/src/Queue.cpp
     backend/src/HashTable.cpp
     backend/src/Graph.cpp
@@ -37,7 +40,7 @@ target_include_directories(routex PRIVATE
 
 # A separate executable dedicated to blockchain testing.
 add_executable(test_blockchain
-    backend/tests/test_blockchain.cpp
+    tests/test_blockchain.cpp
     backend/src/Block.cpp
     backend/src/TransferEvent.cpp
     backend/src/Blockchain.cpp
