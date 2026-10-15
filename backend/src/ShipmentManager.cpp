@@ -1,4 +1,3 @@
-
 #include "../include/ShipmentManager.h"
 #include "../include/TransferEvent.h"
 
@@ -20,7 +19,7 @@ bool ShipmentManager::recordEvent(
     string status)
 {
     time_t now = time(nullptr);
-    tm *localTime = localtime(&now);
+    tm* localTime = localtime(&now);
 
     if (localTime == nullptr)
         return false;
@@ -34,12 +33,13 @@ bool ShipmentManager::recordEvent(
         eventType,
         location,
         timestamp.str(),
-        status);
+        status
+    );
 
     if (!blockchain.addTransaction(event))
         return false;
 
-    nextTransactionID++;
+    ++nextTransactionID;
     return true;
 }
 
@@ -48,10 +48,7 @@ bool ShipmentManager::createShipment(Shipment shipment)
     int id = shipment.getShipmentID();
 
     if (id <= 0 || registry.search(id) != nullptr)
-    {
-        cout << "Invalid or duplicate shipment ID.\n";
         return false;
-    }
 
     if (!registry.insert(shipment))
         return false;
@@ -59,7 +56,8 @@ bool ShipmentManager::createShipment(Shipment shipment)
     processingQueue.enqueue(shipment);
 
     if (!recordEvent(
-            id, "CREATED",
+            id,
+            "CREATED",
             shipment.getSourceCity(),
             shipment.getStatus()))
     {
@@ -69,7 +67,7 @@ bool ShipmentManager::createShipment(Shipment shipment)
     return true;
 }
 
-Shipment *ShipmentManager::searchShipment(int shipmentID)
+Shipment* ShipmentManager::searchShipment(int shipmentID)
 {
     return registry.search(shipmentID);
 }
@@ -77,33 +75,27 @@ Shipment *ShipmentManager::searchShipment(int shipmentID)
 bool ShipmentManager::processNextShipment()
 {
     if (processingQueue.isEmpty())
-    {
-        cout << "No shipments waiting for processing.\n";
         return false;
-    }
 
     Shipment shipment = processingQueue.dequeue();
     int id = shipment.getShipmentID();
 
-    Shipment *storedShipment = registry.search(id);
+    Shipment* storedShipment = registry.search(id);
 
     if (storedShipment == nullptr)
-    {
-        cout << "Shipment not found in registry.\n";
         return false;
-    }
 
     storedShipment->setStatus("DISPATCHED");
 
     if (!recordEvent(
-            id, "DISPATCHED",
+            id,
+            "DISPATCHED",
             storedShipment->getSourceCity(),
             "DISPATCHED"))
     {
         cout << "Warning: dispatch event recording failed.\n";
     }
 
-    cout << "Shipment " << id << " dispatched.\n";
     return true;
 }
 
@@ -111,38 +103,24 @@ bool ShipmentManager::recordArrival(
     int shipmentID,
     string location)
 {
-    Shipment *shipment = registry.search(shipmentID);
+    Shipment* shipment = registry.search(shipmentID);
 
-    if (shipment == nullptr)
-    {
-        cout << "Shipment not found.\n";
+    if (shipment == nullptr ||
+        shipment->getStatus() != "DISPATCHED")
         return false;
-    }
-
-    if (shipment->getStatus() != "DISPATCHED")
-    {
-        cout << "Only dispatched shipments can arrive.\n";
-        return false;
-    }
-
-    shipment->setStatus("ARRIVED");
 
     if (!recordEvent(
-            shipmentID, "ARRIVED",
-            location, "ARRIVED"))
-    {
-        shipment->setStatus("DISPATCHED");
-        cout << "Arrival event recording failed.\n";
+            shipmentID,
+            "ARRIVED",
+            location,
+            "ARRIVED"))
         return false;
-    }
 
-    cout << "Shipment " << shipmentID << " arrived at "
-         << location << ".\n";
-
+    shipment->setStatus("ARRIVED");
     return true;
 }
 
-bool ShipmentManager::saveAll(const string &filename)
+bool ShipmentManager::saveAll(const string& filename)
 {
     Shipment shipments[500];
     int count = registry.getAllShipments(shipments, 500);
@@ -157,17 +135,16 @@ bool ShipmentManager::saveAll(const string &filename)
 
     file.close();
 
-    for (int i = 0; i < count; i++)
+    for (int i = 0; i < count; ++i)
     {
         if (!Storage::saveShipment(filename, shipments[i]))
             return false;
     }
 
-    cout << "Saved " << count << " shipment(s).\n";
     return true;
 }
 
-bool ShipmentManager::loadAll(const string &filename)
+bool ShipmentManager::loadAll(const string& filename)
 {
     Shipment shipments[500];
     int count = 0;
@@ -175,22 +152,26 @@ bool ShipmentManager::loadAll(const string &filename)
     if (!Storage::loadShipments(filename, shipments, 500, count))
         return false;
 
-    for (int i = 0; i < count; i++)
+    for (int i = 0; i < count; ++i)
     {
-        if (registry.search(shipments[i].getShipmentID()) != nullptr)
+        int id = shipments[i].getShipmentID();
+
+        if (registry.search(id) != nullptr)
             continue;
 
         if (registry.insert(shipments[i]))
         {
-            if (shipments[i].getStatus() == "CREATED" ||
-                shipments[i].getStatus() == "PENDING")
+            string status = shipments[i].getStatus();
+
+            if (status == "CREATED" ||
+                status == "PENDING" ||
+                status == "Pending")
             {
                 processingQueue.enqueue(shipments[i]);
             }
         }
     }
 
-    cout << "Loaded " << count << " shipment record(s).\n";
     return true;
 }
 
@@ -202,4 +183,26 @@ void ShipmentManager::displayShipments()
 void ShipmentManager::displayBlockchain()
 {
     blockchain.display();
+}
+
+int ShipmentManager::getAllShipments(
+    Shipment shipments[],
+    int capacity)
+{
+    return registry.getAllShipments(shipments, capacity);
+}
+
+bool ShipmentManager::verifyBlockchain()
+{
+    return blockchain.verifyChain();
+}
+
+string ShipmentManager::getBlockchainVerificationError()
+{
+    return blockchain.getLastVerificationError();
+}
+
+int ShipmentManager::getBlockchainBlockCount()
+{
+    return blockchain.getBlockCount();
 }
