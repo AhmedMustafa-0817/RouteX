@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(ROUTEX
-    VERSION 1.0
-    LANGUAGES CXX
-)
+project(ROUTEX VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,7 +8,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 enable_testing()
 
-# Sources used by the main application.
 set(ROUTEX_SOURCES
     backend/src/Order.cpp
     backend/src/Shipment.cpp
@@ -34,11 +30,8 @@ add_executable(routex
     ${ROUTEX_SOURCES}
 )
 
-target_include_directories(routex PRIVATE
-    backend/include
-)
+target_include_directories(routex PRIVATE backend/include)
 
-# A separate executable dedicated to blockchain testing.
 add_executable(test_blockchain
     tests/test_blockchain.cpp
     backend/src/Block.cpp
@@ -47,11 +40,20 @@ add_executable(test_blockchain
     backend/src/SHA256.cpp
 )
 
-target_include_directories(test_blockchain PRIVATE
-    backend/include
-)
+target_include_directories(test_blockchain PRIVATE backend/include)
 
 add_test(
     NAME blockchain_tests
     COMMAND test_blockchain
 )
+
+add_executable(routex_api
+    backend/server/Server.cpp
+    ${ROUTEX_SOURCES}
+)
+
+target_include_directories(routex_api PRIVATE backend/include)
+
+if(WIN32)
+    target_link_libraries(routex_api PRIVATE ws2_32)
+endif()
