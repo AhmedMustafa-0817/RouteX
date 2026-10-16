@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10172a">
+  <meta name="description" content="RouteX shipment operations dashboard">
+  <title>Overview · RouteX</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="js/app.js"></script>
+</head>
+<body data-page="dashboard">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="index.html" aria-label="RouteX overview">
+        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23.5 12.4 8l5.1 10.2 3.1-6.1L27 23.5"/><path d="M8.5 23.5h15"/></svg></span>
+        <span class="brand-name">route<span>x</span><small>SHIPMENT OPERATIONS</small></span>
+      </a>
+
+      <div class="sidebar-label">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <a class="nav-link is-active" href="index.html" aria-current="page"><span class="nav-icon">⌂</span><span>Overview</span></a>
+        <a class="nav-link" href="orders.html"><span class="nav-icon">▤</span><span>Orders &amp; shipments</span><span class="nav-count" id="navShipmentCount">—</span></a>
+        <a class="nav-link" href="index.html#routes-preview"><span class="nav-icon">⌁</span><span>Routes</span><span class="nav-soon">SOON</span></a>
+        <a class="nav-link" href="index.html#blockchain-preview"><span class="nav-icon">⛓</span><span>Blockchain</span></a>
+      </nav>
+
+      <div class="sidebar-label sidebar-label-spaced">SYSTEM</div>
+      <div class="sidebar-system-card">
+        <span class="system-orb"><span></span></span>
+        <div><strong>Local backend</strong><p id="sidebarApiText">Connecting to C++ API…</p></div>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="avatar">RX</div>
+        <div class="profile-copy"><strong>RouteX Workspace</strong><span>Development environment</span></div>
+        <span class="profile-dots">···</span>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menuToggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <div class="breadcrumbs"><span>Workspace</span><span class="crumb-slash">/</span><strong>Overview</strong></div>
+        <div class="topbar-right">
+          <div class="api-pill" id="apiPill"><span class="status-dot"></span><span id="apiPillText">Checking API</span></div>
+          <div class="top-avatar">RX</div>
+        </div>
+      </header>
+
+      <div class="page-content">
+        <section class="page-heading heading-with-action">
+          <div><div class="eyebrow"><span class="eyebrow-line"></span> OPERATIONS CENTER</div><h1>Good to see you.</h1><p class="page-subtitle">Here’s what’s happening across your shipments today.</p></div>
+          <a class="button button-primary" href="orders.html#new-shipment"><span class="button-plus">+</span> Add shipment</a>
+        </section>
+
+        <section class="stats-grid" aria-label="Shipment summary">
+          <article class="stat-card stat-card-primary">
+            <div class="stat-top"><span class="stat-label">Total shipments</span><span class="stat-icon stat-icon-indigo">▤</span></div>
+            <div class="stat-value" id="statTotal">—</div><div class="stat-foot"><span class="stat-foot-dot indigo-dot"></span> Across your shipment registry</div>
+            <div class="stat-decoration decoration-one"></div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">Waiting in queue</span><span class="stat-icon stat-icon-amber">◷</span></div>
+            <div class="stat-value" id="statQueued">—</div><div class="stat-foot"><span class="stat-foot-dot amber-dot"></span> Awaiting dispatch</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">In transit</span><span class="stat-icon stat-icon-blue">↗</span></div>
+            <div class="stat-value" id="statTransit">—</div><div class="stat-foot"><span class="stat-foot-dot blue-dot"></span> Dispatched shipments</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">Delivered</span><span class="stat-icon stat-icon-green">✓</span></div>
+            <div class="stat-value" id="statDelivered">—</div><div class="stat-foot"><span class="stat-foot-dot green-dot"></span> Arrivals recorded</div>
+          </article>
+        </section>
+
+        <section class="content-grid dashboard-grid">
+          <article class="panel recent-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">LIVE REGISTRY</div><h2>Recent shipments</h2><p class="panel-subtitle">Latest records from your C++ backend.</p></div><a class="text-link" href="orders.html">View all <span aria-hidden="true">→</span></a></div>
+            <div class="table-wrap">
+              <table class="data-table dashboard-table">
+                <thead><tr><th>SHIPMENT</th><th>ROUTE</th><th>STATUS</th><th>WEIGHT</th></tr></thead>
+                <tbody id="recentShipments"><tr><td colspan="4" class="table-message"><span class="loading-spinner"></span> Loading shipment records…</td></tr></tbody>
+              </table>
+            </div>
+            <div class="panel-footer"><span class="table-footer-dot"></span><span id="registryFooter">Waiting for the backend registry</span><a href="orders.html">Manage shipments <span aria-hidden="true">↗</span></a></div>
+          </article>
+
+          <article class="panel distribution-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">AT A GLANCE</div><h2>Shipment status</h2><p class="panel-subtitle">A live breakdown of current records.</p></div><span class="subtle-icon">◌</span></div>
+            <div class="distribution-total"><strong id="distributionTotal">—</strong><span>total records</span></div>
+            <div class="distribution-bar" aria-label="Shipment statuses" id="distributionBar"><span class="bar-queued"></span><span class="bar-transit"></span><span class="bar-delivered"></span></div>
+            <div class="legend-list">
+              <div class="legend-row"><span class="legend-key key-queued"></span><span>Queued</span><strong id="legendQueued">—</strong></div>
+              <div class="legend-row"><span class="legend-key key-transit"></span><span>In transit</span><strong id="legendTransit">—</strong></div>
+              <div class="legend-row"><span class="legend-key key-delivered"></span><span>Delivered</span><strong id="legendDelivered">—</strong></div>
+            </div>
+            <div class="distribution-note"><span>↗</span><p>Status counts refresh from the backend whenever this page loads.</p></div>
+          </article>
+        </section>
+
+        <section class="lower-grid">
+          <article class="feature-card routes-feature" id="routes-preview">
+            <div class="feature-icon feature-icon-route"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.3"/><circle cx="18" cy="6" r="2.3"/><path d="M8 18h3a3 3 0 0 0 3-3v-3a3 3 0 0 1 3-3h.7"/></svg></div>
+            <div class="feature-body"><div class="feature-tag">ROUTE INTELLIGENCE <span>DAY 11</span></div><h3>Find the fastest path.</h3><p>Your weighted city graph and Dijkstra algorithm are ready in the backend. A dedicated route screen is the next UI milestone.</p><span class="feature-status"><span class="status-dot status-dot-ready"></span> Route API available</span></div>
+            <div class="route-art" aria-hidden="true"><span class="route-node node-a"></span><span class="route-node node-b"></span><span class="route-node node-c"></span><svg viewBox="0 0 140 94"><path d="M15 70 58 22 92 62 126 15"/><path d="M58 22 126 15"/></svg></div>
+          </article>
+
+          <article class="feature-card blockchain-feature" id="blockchain-preview">
+            <div class="feature-icon feature-icon-chain"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 14.5 14.5 9.5"/><path d="M7.3 16.7 5 19a4 4 0 0 1-5.7-5.7l5-5A4 4 0 0 1 10 8" transform="translate(1 0)"/><path d="M16.7 7.3 19 5a4 4 0 0 1 5.7 5.7l-5 5A4 4 0 0 1 14 16" transform="translate(-1 0)"/></svg></div>
+            <div class="feature-body"><div class="feature-tag">DATA INTEGRITY <span>DAY 12</span></div><h3>Every event leaves a trail.</h3><p>Check the backend blockchain's verification status and number of blocks currently held in memory.</p><div class="chain-meta"><span><strong id="blockCount">—</strong> blocks</span><span class="chain-separator"></span><span id="chainStatus" class="chain-status">Checking integrity…</span></div><button class="button button-secondary button-small" id="verifyChainButton">Verify blockchain <span aria-hidden="true">→</span></button></div>
+          </article>
+        </section>
+        <footer class="page-footer"><span>© RouteX · Shipment operations</span><span>Built with C++ &amp; custom data structures <i></i> <span id="footerApiStatus">API status unknown</span></span></footer>
+      </div>
+    </main>
+  </div>
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+</body>
+</html>
