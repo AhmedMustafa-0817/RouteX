@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10172a">
+  <meta name="description" content="Manage RouteX shipments and processing queue">
+  <title>Orders &amp; shipments · RouteX</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="js/app.js"></script>
+  <script defer src="js/orders.js"></script>
+</head>
+<body data-page="orders">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="index.html" aria-label="RouteX overview">
+        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23.5 12.4 8l5.1 10.2 3.1-6.1L27 23.5"/><path d="M8.5 23.5h15"/></svg></span>
+        <span class="brand-name">route<span>x</span><small>SHIPMENT OPERATIONS</small></span>
+      </a>
+      <div class="sidebar-label">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <a class="nav-link" href="index.html"><span class="nav-icon">⌂</span><span>Overview</span></a>
+        <a class="nav-link is-active" href="orders.html" aria-current="page"><span class="nav-icon">▤</span><span>Orders &amp; shipments</span><span class="nav-count" id="navShipmentCount">—</span></a>
+        <a class="nav-link" href="index.html#routes-preview"><span class="nav-icon">⌁</span><span>Routes</span><span class="nav-soon">SOON</span></a>
+        <a class="nav-link" href="index.html#blockchain-preview"><span class="nav-icon">⛓</span><span>Blockchain</span></a>
+      </nav>
+      <div class="sidebar-label sidebar-label-spaced">SYSTEM</div>
+      <div class="sidebar-system-card"><span class="system-orb"><span></span></span><div><strong>Local backend</strong><p id="sidebarApiText">Connecting to C++ API…</p></div></div>
+      <div class="sidebar-bottom"><div class="avatar">RX</div><div class="profile-copy"><strong>RouteX Workspace</strong><span>Development environment</span></div><span class="profile-dots">···</span></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menuToggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <div class="breadcrumbs"><a href="index.html">Workspace</a><span class="crumb-slash">/</span><strong>Orders &amp; shipments</strong></div>
+        <div class="topbar-right"><div class="api-pill" id="apiPill"><span class="status-dot"></span><span id="apiPillText">Checking API</span></div><div class="top-avatar">RX</div></div>
+      </header>
+
+      <div class="page-content">
+        <section class="page-heading heading-with-action orders-heading">
+          <div><div class="eyebrow"><span class="eyebrow-line"></span> SHIPMENT MANAGEMENT</div><h1>Orders &amp; shipments</h1><p class="page-subtitle">Create shipments, search the registry, and move orders through the processing queue.</p></div>
+          <button class="button button-primary" id="focusCreateButton"><span class="button-plus">+</span> New shipment</button>
+        </section>
+
+        <section class="orders-summary" aria-label="Current shipment counts">
+          <div class="summary-item"><span class="summary-icon summary-icon-total">▤</span><span class="summary-label">All shipments</span><strong id="ordersTotal">—</strong></div>
+          <div class="summary-divider"></div>
+          <div class="summary-item"><span class="summary-icon summary-icon-queued">◷</span><span class="summary-label">In queue</span><strong id="ordersQueued">—</strong></div>
+          <div class="summary-divider"></div>
+          <div class="summary-item"><span class="summary-icon summary-icon-transit">↗</span><span class="summary-label">In transit</span><strong id="ordersTransit">—</strong></div>
+          <div class="summary-divider"></div>
+          <div class="summary-item"><span class="summary-icon summary-icon-delivered">✓</span><span class="summary-label">Delivered</span><strong id="ordersDelivered">—</strong></div>
+        </section>
+
+        <section class="panel create-panel" id="new-shipment">
+          <div class="panel-heading create-panel-heading"><div><div class="panel-kicker">NEW RECORD</div><h2>Add a shipment</h2><p class="panel-subtitle">New records are added to the Hash Table registry and processing queue by the C++ service.</p></div><span class="create-step"><span>01</span> CREATE</span></div>
+          <form id="shipmentForm" class="shipment-form">
+            <label class="form-field"><span>Shipment ID <b>*</b></span><input type="number" id="shipmentID" name="shipmentID" min="1" step="1" placeholder="e.g. 105" required><small>Unique number used for Hash Table lookup.</small></label>
+            <label class="form-field"><span>Package type <b>*</b></span><select id="packageType" name="packageType" required><option value="">Select package type</option><option>Documents</option><option>Electronics</option><option>Apparel</option><option>Medical supplies</option><option>General goods</option></select></label>
+            <label class="form-field"><span>Source city <b>*</b></span><select id="sourceCity" name="sourceCity" required><option value="">Select origin</option><option>Karachi</option><option>Hyderabad</option><option>Sukkur</option><option>Quetta</option><option>Multan</option><option>Lahore</option><option>Islamabad</option><option>Peshawar</option></select></label>
+            <label class="form-field"><span>Destination city <b>*</b></span><select id="destinationCity" name="destinationCity" required><option value="">Select destination</option><option>Karachi</option><option>Hyderabad</option><option>Sukkur</option><option>Quetta</option><option>Multan</option><option>Lahore</option><option>Islamabad</option><option>Peshawar</option></select></label>
+            <label class="form-field form-field-weight"><span>Package weight (kg) <b>*</b></span><input type="number" id="weight" name="weight" min="0.01" max="10000" step="0.01" placeholder="e.g. 2.50" required><small>Enter a positive weight in kilograms.</small></label>
+            <div class="form-submit-area"><span class="form-note"><span class="tiny-lock">⌑</span> Status starts as <strong>Pending</strong></span><button class="button button-primary" id="createShipmentButton" type="submit"><span class="button-plus">+</span> Create shipment</button></div>
+          </form>
+        </section>
+
+        <section class="panel shipments-panel">
+          <div class="panel-heading shipments-panel-heading"><div><div class="panel-kicker">SHIPMENT REGISTRY</div><h2>All shipments <span class="heading-count" id="visibleCount">0</span></h2><p class="panel-subtitle">Search by ID to query the custom backend Hash Table.</p></div><button class="button button-secondary button-small" id="refreshShipmentsButton"><span class="refresh-symbol">↻</span> Refresh</button></div>
+          <div class="table-toolbar">
+            <form class="search-form" id="shipmentSearchForm"><span class="search-symbol" aria-hidden="true">⌕</span><label class="visually-hidden" for="shipmentSearch">Search shipment by ID</label><input type="search" id="shipmentSearch" placeholder="Search by shipment ID…" inputmode="numeric" autocomplete="off"><button type="submit" class="search-submit">Search</button></form>
+            <div class="table-toolbar-actions"><span class="result-summary" id="resultSummary">Showing all records</span><button class="button button-secondary button-small button-process" id="processNextButton"><span aria-hidden="true">▶</span> Process next</button></div>
+          </div>
+          <div class="table-wrap orders-table-wrap">
+            <table class="data-table orders-table">
+              <thead><tr><th>SHIPMENT</th><th>ROUTE</th><th>PACKAGE</th><th>WEIGHT</th><th>STATUS</th><th class="actions-heading">ACTION</th></tr></thead>
+              <tbody id="shipmentsTableBody"><tr><td colspan="6" class="table-message"><span class="loading-spinner"></span> Connecting to the shipment registry…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="panel-footer orders-table-footer"><span><span class="table-footer-dot"></span> <span id="ordersFooterStatus">Syncing with the C++ API</span></span><span>Search is handled by the custom Hash Table</span></div>
+        </section>
+        <footer class="page-footer"><span>© RouteX · Shipment operations</span><span>Queue <i></i> Hash Table <i></i> Blockchain</span></footer>
+      </div>
+    </main>
+  </div>
+
+  <dialog class="arrival-dialog" id="arrivalDialog" aria-labelledby="arrivalTitle">
+    <form id="arrivalForm" method="dialog">
+      <div class="dialog-top"><span class="dialog-icon">✓</span><button type="button" class="dialog-close" id="closeArrivalDialog" aria-label="Close">×</button></div>
+      <h2 id="arrivalTitle">Record shipment arrival</h2><p class="dialog-copy">This records an ARRIVED event in the blockchain and updates the shipment status.</p>
+      <input type="hidden" id="arrivalShipmentID">
+      <label class="form-field"><span>Arrival location <b>*</b></span><select id="arrivalLocation" required><option value="">Choose arrival city</option><option>Karachi</option><option>Hyderabad</option><option>Sukkur</option><option>Quetta</option><option>Multan</option><option>Lahore</option><option>Islamabad</option><option>Peshawar</option></select></label>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" id="cancelArrivalButton">Cancel</button><button type="submit" class="button button-primary" id="confirmArrivalButton">Record arrival</button></div>
+    </form>
+  </dialog>
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+</body>
+</html>

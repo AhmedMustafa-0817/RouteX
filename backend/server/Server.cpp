@@ -1,5 +1,25 @@
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+using SocketHandle = SOCKET;
+#define CLOSE_SOCKET closesocket
+#define SHUTDOWN_SEND SD_SEND
+#else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+using SocketHandle = int;
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
+#define CLOSE_SOCKET close
+#define SHUTDOWN_SEND SHUT_WR
+#define WSACleanup() ((void)0)
+#endif
 
 #include "../include/ShipmentManager.h"
 #include "../include/Graph.h"
@@ -122,7 +142,7 @@ string httpResponse(
     return response.str();
 }
 
-bool sendAll(SOCKET client, const string& data)
+bool sendAll(SocketHandle client, const string& data)
 {
     size_t sent = 0;
 
@@ -253,11 +273,117 @@ string handleRequest(
             );
         }
 
+        if (!manager.saveAll("data/shipments.csv"))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Shipment created in memory but CSV persistence failed\"}",
+                "Internal Server Error"
+            );
+        }
+
         return httpResponse(
             201,
             "{\"message\":\"Shipment created successfully\"}",
             "Created"
         );
+    }
+
+    // POST /api/shipments/search
+    // Uses ShipmentManager::searchShipment(), which delegates to the custom Hash Table.
+    if (method == "POST" && path == "/api/shipments/search")
+    {
+        double idValue = 0;
+
+        if (!getJsonNumber(body, "shipmentID", idValue) ||
+            idValue <= 0 || idValue != static_cast<int>(idValue))
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"A positive integer shipmentID is required\"}",
+                "Bad Request"
+            );
+        }
+
+        Shipment* shipment = manager.searchShipment(static_cast<int>(idValue));
+        if (shipment == nullptr)
+        {
+            return httpResponse(404, "{\"error\":\"Shipment not found\"}", "Not Found");
+        }
+
+        stringstream json;
+        json << "{"
+             << "\"shipmentID\":" << shipment->getShipmentID() << ","
+             << "\"sourceCity\":" << jsonString(shipment->getSourceCity()) << ","
+             << "\"destinationCity\":" << jsonString(shipment->getDestinationCity()) << ","
+             << "\"packageType\":" << jsonString(shipment->getPackageType()) << ","
+             << "\"weight\":" << shipment->getWeight() << ","
+             << "\"status\":" << jsonString(shipment->getStatus())
+             << "}";
+        return httpResponse(200, json.str());
+    }
+
+    // POST /api/shipments/process-next
+    if (method == "POST" && path == "/api/shipments/process-next")
+    {
+        if (!manager.processNextShipment())
+        {
+            return httpResponse(
+                409,
+                "{\"error\":\"The processing queue is empty\"}",
+                "Conflict"
+            );
+        }
+
+        if (!manager.saveAll("data/shipments.csv"))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Shipment processed in memory but CSV persistence failed\"}",
+                "Internal Server Error"
+            );
+        }
+
+        return httpResponse(200, "{\"message\":\"Next shipment processed\"}");
+    }
+
+    // POST /api/shipments/arrival
+    // Body: { "shipmentID": 103, "location": "Hyderabad" }
+    if (method == "POST" && path == "/api/shipments/arrival")
+    {
+        double idValue = 0;
+        string location = getJsonString(body, "location");
+
+        if (!getJsonNumber(body, "shipmentID", idValue) ||
+            idValue <= 0 || idValue != static_cast<int>(idValue) ||
+            location.empty())
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"A valid shipmentID and location are required\"}",
+                "Bad Request"
+            );
+        }
+
+        if (!manager.recordArrival(static_cast<int>(idValue), location))
+        {
+            return httpResponse(
+                409,
+                "{\"error\":\"Shipment was not found or is not DISPATCHED\"}",
+                "Conflict"
+            );
+        }
+
+        if (!manager.saveAll("data/shipments.csv"))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Arrival recorded in memory but CSV persistence failed\"}",
+                "Internal Server Error"
+            );
+        }
+
+        return httpResponse(200, "{\"message\":\"Shipment arrival recorded\"}");
     }
 
     // POST /api/routes/fastest
@@ -362,17 +488,31 @@ void setupRoutes(CityGraph& graph)
     graph.addEdge("Karachi", "Quetta", 10);
 }
 
-int main()
+int main(int argc, char* argv[])
 {
-    WSADATA wsaData;
+    int serverPort = 8080;
+    if (argc > 1)
+    {
+        char* end = nullptr;
+        long requestedPort = strtol(argv[1], &end, 10);
+        if (end == argv[1] || *end != '\0' || requestedPort < 1024 || requestedPort > 65535)
+        {
+            cerr << "Usage: routex_api [port (1024-65535)]\n";
+            return 1;
+        }
+        serverPort = static_cast<int>(requestedPort);
+    }
 
+#ifdef _WIN32
+    WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     {
         cerr << "Winsock initialization failed.\n";
         return 1;
     }
+#endif
 
-    SOCKET serverSocket =
+    SocketHandle serverSocket =
         socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
     if (serverSocket == INVALID_SOCKET)
@@ -384,7 +524,7 @@ int main()
 
     sockaddr_in serverAddress{};
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(8081);
+    serverAddress.sin_port = htons(static_cast<unsigned short>(serverPort));
 
     inet_pton(
         AF_INET,
@@ -392,34 +532,45 @@ int main()
         &serverAddress.sin_addr
     );
 
-    if (bind(
+    int reuseAddress = 1;
+    setsockopt(
+        serverSocket,
+        SOL_SOCKET,
+        SO_REUSEADDR,
+        reinterpret_cast<const char*>(&reuseAddress),
+        sizeof(reuseAddress)
+    );
+
+    if (::bind(
             serverSocket,
             reinterpret_cast<sockaddr*>(&serverAddress),
-            sizeof(serverAddress)) == SOCKET_ERROR)
+            sizeof(serverAddress)) == -1)
     {
-        cerr << "Bind failed. Port 8081 may already be in use.\n";
-        closesocket(serverSocket);
-        WSACleanup();
+        cerr << "Bind failed. Port " << serverPort << " may already be in use.\n";
+        CLOSE_SOCKET(serverSocket);
         return 1;
     }
 
     if (listen(serverSocket, SOMAXCONN) == SOCKET_ERROR)
     {
         cerr << "Listen failed.\n";
-        closesocket(serverSocket);
+        CLOSE_SOCKET(serverSocket);
         WSACleanup();
         return 1;
     }
 
     ShipmentManager manager;
+    if (!manager.loadAll("data/shipments.csv"))
+        cout << "Warning: could not load data/shipments.csv; starting with an empty registry.\n";
+
     CityGraph graph;
     setupRoutes(graph);
 
-    cout << "RouteX API running at http://127.0.0.1:8080\n";
+    cout << "RouteX API running at http://127.0.0.1:" << serverPort << "\n";
 
     while (true)
     {
-        SOCKET clientSocket =
+        SocketHandle clientSocket =
             accept(serverSocket, nullptr, nullptr);
 
         if (clientSocket == INVALID_SOCKET)
@@ -530,11 +681,11 @@ int main()
         }
 
         sendAll(clientSocket, response);
-        shutdown(clientSocket, SD_SEND);
-        closesocket(clientSocket);
+        shutdown(clientSocket, SHUTDOWN_SEND);
+        CLOSE_SOCKET(clientSocket);
     }
 
-    closesocket(serverSocket);
+    CLOSE_SOCKET(serverSocket);
     WSACleanup();
     return 0;
 }
