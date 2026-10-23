@@ -2,7 +2,7 @@
   'use strict';
 
   // Keep the browser layer thin: all shipment/DSA operations stay in the C++ API.
-  const API_BASE = (window.ROUTEX_API_BASE || 'http://127.0.0.1:8080').replace(/\/$/, '');
+  const API_BASE = (window.ROUTEX_API_BASE || 'http://127.0.0.1:8090').replace(/\/$/, '');
 
   async function api(path, options = {}) {
     const response = await fetch(`${API_BASE}${path}`, {
@@ -72,7 +72,7 @@
       pill.classList.toggle('is-offline', !online);
     }
     if (pillText) pillText.textContent = online ? 'API connected' : 'API offline';
-    if (sidebarText) sidebarText.textContent = online ? 'Connected · localhost:8080' : 'Start the C++ API server';
+    if (sidebarText) sidebarText.textContent = online ? 'Connected · localhost:8090' : 'Start the C++ API server';
     if (footerText) footerText.textContent = online ? 'C++ API connected' : 'C++ API unavailable';
     const statusDot = document.querySelector('.sidebar-system-card .system-orb > span');
     if (statusDot) {

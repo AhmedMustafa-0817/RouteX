@@ -352,3 +352,54 @@ h2 { margin-bottom: 6px; font: 800 15px/1.3 'Manrope', sans-serif; letter-spacin
   .panel-footer { padding-left: 14px; padding-right: 14px; }
   .arrival-dialog { padding: 20px; }
 }
+/* ===== Day 11: Routes page (append to the end of css/style.css) ===== */
+.route-form-panel { margin-bottom: 18px; }
+.route-form { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 14px; align-items: end; padding: 0 21px 16px; }
+.route-swap { width: 39px; height: 39px; border: 1px solid #e2e6ef; border-radius: 9px; background: #fff; color: #6b5de0; font-size: 17px; }
+.route-swap:hover { background: #f9f9ff; border-color: #d2cffa; }
+.route-submit { min-height: 39px; }
+.route-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 21px 20px; color: #9299a9; font-size: 10px; }
+.route-chip { min-height: 26px; padding: 0 10px; border: 1px solid #e3e6ee; border-radius: 20px; background: #fff; color: #656d82; font-size: 10px; font-weight: 600; }
+.route-chip:hover { border-color: #cfcafc; color: #6355dc; background: #faf9ff; }
+.route-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(0, 1.3fr); gap: 18px; }
+.route-result { padding: 0 21px 22px; }
+.route-empty { margin: 0; padding: 28px 0; text-align: center; color: #98a0b2; font-size: 11px; }
+.route-empty.is-error { color: var(--red); }
+.route-total { display: flex; align-items: baseline; gap: 8px; padding: 4px 0 18px; }
+.route-total strong { font: 800 34px/1 'Manrope', sans-serif; letter-spacing: -1.2px; color: #22283a; }
+.route-total span { color: #8c94a6; font-size: 11px; }
+.route-total em { margin-left: auto; padding: 3px 8px; border-radius: 6px; background: var(--accent-soft); color: #6b5de0; font-size: 9px; font-style: normal; font-weight: 700; }
+.route-steps { list-style: none; margin: 0; padding: 0; }
+.route-step { position: relative; display: flex; align-items: center; gap: 12px; padding: 0 0 20px 22px; }
+.route-step:last-child { padding-bottom: 0; }
+.route-step::before { content: ''; position: absolute; left: 4px; top: 14px; bottom: -2px; width: 2px; background: #e3e0fb; }
+.route-step:last-child::before { display: none; }
+.route-step-dot { position: absolute; left: 0; top: 4px; width: 10px; height: 10px; border: 2px solid #7f70ed; border-radius: 50%; background: #fff; }
+.route-step:first-child .route-step-dot, .route-step:last-child .route-step-dot { background: #7f70ed; }
+.route-step strong { display: block; font-size: 12px; color: #2a3042; }
+.route-step small { display: block; margin-top: 2px; font-size: 9px; color: #9ba2b1; }
+.route-leg { margin-left: auto; color: #7d76d6; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.route-map-wrap { padding: 0 14px 12px; }
+#routeMap { display: block; width: 100%; height: auto; }
+.map-edge { stroke: #dfe3ec; stroke-width: 2; }
+.map-edge.is-active { stroke: #6658e8; stroke-width: 3.5; }
+.map-weight rect { fill: #fff; stroke: #e8ebf2; }
+.map-weight text { font: 600 9px 'DM Sans', sans-serif; fill: #8c94a6; }
+.map-weight.is-active rect { fill: #eeedff; stroke: #c9c4fa; }
+.map-weight.is-active text { fill: #5546d6; }
+.map-node circle { fill: #fff; stroke: #b9bfcd; stroke-width: 2.5; }
+.map-node text { font: 600 11px 'DM Sans', sans-serif; fill: #6a7389; }
+.map-node.is-active circle { stroke: #6658e8; fill: #eeedff; }
+.map-node.is-active text { fill: #2a3042; font-weight: 700; }
+.map-node.is-start circle { fill: #6658e8; }
+.map-node.is-end circle { fill: #189b72; stroke: #189b72; }
+
+@media (max-width: 1000px) {
+  .route-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .route-form { grid-template-columns: 1fr; padding: 0 16px 14px; }
+  .route-swap { justify-self: center; transform: rotate(90deg); }
+  .route-quick { padding: 0 16px 18px; }
+  .route-result { padding: 0 16px 20px; }
+}
