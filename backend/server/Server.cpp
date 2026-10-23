@@ -490,7 +490,7 @@ void setupRoutes(CityGraph& graph)
 
 int main(int argc, char* argv[])
 {
-    int serverPort = 8080;
+    int serverPort = 8090;
     if (argc > 1)
     {
         char* end = nullptr;
