@@ -30,6 +30,8 @@ using SocketHandle = int;
 #include <sstream>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
+#include <mutex>
 
 using std::string;
 using std::stringstream;
@@ -133,8 +135,9 @@ string httpResponse(
              << statusText << "\r\n";
     response << "Content-Type: application/json; charset=utf-8\r\n";
     response << "Access-Control-Allow-Origin: *\r\n";
-    response << "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
-    response << "Access-Control-Allow-Headers: Content-Type\r\n";
+    response << "Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE\r\n";
+    response << "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Access-Control-Request-Private-Network\r\n";
+    response << "Access-Control-Allow-Private-Network: true\r\n";
     response << "Content-Length: " << body.size() << "\r\n";
     response << "Connection: close\r\n\r\n";
     response << body;
@@ -436,8 +439,49 @@ string handleRequest(
         stringstream json;
         json << "{\"blockCount\":"
              << manager.getBlockchainBlockCount()
-             << "}";
+             << ",\"blocks\":[";
 
+        Block* block = manager.getBlockchainHead();
+        bool firstBlock = true;
+
+        while (block != nullptr)
+        {
+            if (!firstBlock)
+                json << ",";
+            firstBlock = false;
+
+            json << "{"
+                 << "\"index\":" << block->getIndex() << ","
+                 << "\"timestamp\":" << jsonString(block->getTimestamp()) << ","
+                 << "\"previousHash\":" << jsonString(block->getPreviousHash()) << ","
+                 << "\"currentHash\":" << jsonString(block->getCurrentHash()) << ","
+                 << "\"eventCount\":" << block->getEventCount() << ","
+                 << "\"transactions\":[";
+
+            for (int i = 0; i < block->getEventCount(); ++i)
+            {
+                if (i > 0)
+                    json << ",";
+
+                TransferEvent* ev = block->getEventAt(i);
+                if (ev != nullptr)
+                {
+                    json << "{"
+                         << "\"transactionID\":" << ev->getTransactionID() << ","
+                         << "\"shipmentID\":" << ev->getShipmentID() << ","
+                         << "\"eventType\":" << jsonString(ev->getEventType()) << ","
+                         << "\"location\":" << jsonString(ev->getLocation()) << ","
+                         << "\"timestamp\":" << jsonString(ev->getTimestamp()) << ","
+                         << "\"status\":" << jsonString(ev->getStatus())
+                         << "}";
+                }
+            }
+
+            json << "]}";
+            block = block->getNext();
+        }
+
+        json << "]}";
         return httpResponse(200, json.str());
     }
 
@@ -454,9 +498,79 @@ string handleRequest(
                     valid ? "" :
                     manager.getBlockchainVerificationError()
                 )
+             << ",\"isTampered\":"
+             << (manager.isTampered() ? "true" : "false")
              << "}";
 
         return httpResponse(200, json.str());
+    }
+
+    // POST /api/blockchain/tamper
+    if (method == "POST" && path == "/api/blockchain/tamper")
+    {
+        if (!manager.tamperFirstEvent())
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Failed to tamper with blockchain state\"}",
+                "Internal Server Error"
+            );
+        }
+
+        return httpResponse(
+            200,
+            "{\"message\":\"Blockchain event tampered in memory without updating SHA-256 hashes.\",\"tampered\":true}"
+        );
+    }
+
+    // POST /api/blockchain/register (or /api/blockchain/events)
+    if (method == "POST" && (path == "/api/blockchain/register" || path == "/api/blockchain/events"))
+    {
+        double idValue = 0;
+        getJsonNumber(body, "shipmentID", idValue);
+        string eventType = getJsonString(body, "eventType");
+        string location = getJsonString(body, "location");
+        string status = getJsonString(body, "status");
+
+        if (idValue <= 0 || eventType.empty())
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"A valid positive shipmentID and eventType are required\"}",
+                "Bad Request"
+            );
+        }
+
+        if (location.empty())
+            location = "Warehouse Hub";
+        if (status.empty())
+            status = eventType;
+
+        if (!manager.recordEvent(static_cast<int>(idValue), eventType, location, status))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Failed to record event to blockchain\"}",
+                "Internal Server Error"
+            );
+        }
+
+        stringstream json;
+        json << "{\"message\":\"Event recorded in blockchain successfully\","
+             << "\"blockCount\":" << manager.getBlockchainBlockCount()
+             << "}";
+
+        return httpResponse(201, json.str(), "Created");
+    }
+
+    // POST /api/blockchain/restore or /api/blockchain/reset
+    if (method == "POST" && (path == "/api/blockchain/restore" || path == "/api/blockchain/reset"))
+    {
+        manager.restoreTamper();
+        return httpResponse(
+            200,
+            "{\"message\":\"Blockchain restored to original untampered state.\",\"tampered\":false}"
+        );
     }
 
     return httpResponse(
@@ -486,6 +600,165 @@ void setupRoutes(CityGraph& graph)
     graph.addEdge("Islamabad", "Peshawar", 3);
     graph.addEdge("Quetta", "Sukkur", 7);
     graph.addEdge("Karachi", "Quetta", 10);
+}
+
+
+void processClient(
+    SocketHandle clientSocket,
+    ShipmentManager& manager,
+    CityGraph& graph,
+    std::mutex& managerMutex)
+{
+#ifdef _WIN32
+    DWORD timeoutMs = 3000;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+    setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+#else
+    struct timeval tv;
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+    setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+#endif
+
+    string request;
+    char buffer[4096];
+    int received = 0;
+
+    size_t headerEnd = string::npos;
+    size_t expectedBodyLength = 0;
+
+    // Read HTTP headers and the declared request body.
+    while ((received = recv(
+                clientSocket,
+                buffer,
+                sizeof(buffer),
+                0)) > 0)
+    {
+        request.append(buffer, received);
+
+        headerEnd = request.find("\r\n\r\n");
+
+        if (headerEnd != string::npos)
+        {
+            size_t contentLengthPos = string::npos;
+            for (size_t i = 0; i + 15 <= headerEnd; ++i)
+            {
+                if ((request[i] == 'C' || request[i] == 'c') &&
+                    (request[i+1] == 'o' || request[i+1] == 'O') &&
+                    (request[i+2] == 'n' || request[i+2] == 'N') &&
+                    (request[i+3] == 't' || request[i+3] == 'T') &&
+                    (request[i+4] == 'e' || request[i+4] == 'E') &&
+                    (request[i+5] == 'n' || request[i+5] == 'N') &&
+                    (request[i+6] == 't' || request[i+6] == 'T') &&
+                    request[i+7] == '-' &&
+                    (request[i+8] == 'l' || request[i+8] == 'L') &&
+                    (request[i+9] == 'e' || request[i+9] == 'E') &&
+                    (request[i+10] == 'n' || request[i+10] == 'N') &&
+                    (request[i+11] == 'g' || request[i+11] == 'G') &&
+                    (request[i+12] == 't' || request[i+12] == 'T') &&
+                    (request[i+13] == 'h' || request[i+13] == 'H') &&
+                    request[i+14] == ':')
+                {
+                    contentLengthPos = i + 15;
+                    break;
+                }
+            }
+
+            if (contentLengthPos != string::npos)
+            {
+                while (contentLengthPos < headerEnd &&
+                       (request[contentLengthPos] == ' ' ||
+                        request[contentLengthPos] == '\t'))
+                    ++contentLengthPos;
+
+                expectedBodyLength = static_cast<size_t>(
+                    strtoul(
+                        request.c_str() + contentLengthPos,
+                        nullptr,
+                        10
+                    )
+                );
+            }
+
+            size_t bodyStart = headerEnd + 4;
+
+            if (request.size() >= bodyStart + expectedBodyLength)
+                break;
+        }
+
+        if (request.size() > 1024 * 1024)
+            break;
+    }
+
+    if (request.empty())
+    {
+        CLOSE_SOCKET(clientSocket);
+        return;
+    }
+
+    string method;
+    string path;
+    string body;
+
+    size_t firstSpace = request.find(' ');
+    size_t secondSpace =
+        firstSpace == string::npos
+            ? string::npos
+            : request.find(' ', firstSpace + 1);
+
+    headerEnd = request.find("\r\n\r\n");
+
+    if (firstSpace != string::npos &&
+        secondSpace != string::npos &&
+        headerEnd != string::npos)
+    {
+        method = request.substr(0, firstSpace);
+        path = request.substr(
+            firstSpace + 1,
+            secondSpace - firstSpace - 1
+        );
+
+        body = request.substr(headerEnd + 4);
+
+        size_t queryPos = path.find('?');
+
+        if (queryPos != string::npos)
+            path = path.substr(0, queryPos);
+    }
+
+    string response;
+
+    if (method.empty() || path.empty())
+    {
+        response = httpResponse(
+            400,
+            "{\"error\":\"Malformed HTTP request\"}",
+            "Bad Request"
+        );
+    }
+    else
+    {
+        std::lock_guard<std::mutex> lock(managerMutex);
+        response = handleRequest(
+            method,
+            path,
+            body,
+            manager,
+            graph
+        );
+    }
+
+    sendAll(clientSocket, response);
+
+    shutdown(clientSocket, SHUTDOWN_SEND);
+#ifdef _WIN32
+    DWORD drainTimeout = 50;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&drainTimeout), sizeof(drainTimeout));
+#endif
+    char drain[512];
+    while (recv(clientSocket, drain, sizeof(drain), 0) > 0) {}
+    CLOSE_SOCKET(clientSocket);
 }
 
 int main(int argc, char* argv[])
@@ -526,11 +799,7 @@ int main(int argc, char* argv[])
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(static_cast<unsigned short>(serverPort));
 
-    inet_pton(
-        AF_INET,
-        "127.0.0.1",
-        &serverAddress.sin_addr
-    );
+    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
 
     int reuseAddress = 1;
     setsockopt(
@@ -566,7 +835,9 @@ int main(int argc, char* argv[])
     CityGraph graph;
     setupRoutes(graph);
 
-    cout << "RouteX API running at http://127.0.0.1:" << serverPort << "\n";
+    cout << "RouteX API running at http://127.0.0.1:" << serverPort << std::endl;
+
+    std::mutex managerMutex;
 
     while (true)
     {
@@ -576,113 +847,14 @@ int main(int argc, char* argv[])
         if (clientSocket == INVALID_SOCKET)
             continue;
 
-        string request;
-        char buffer[4096];
-        int received = 0;
-
-        size_t headerEnd = string::npos;
-        size_t expectedBodyLength = 0;
-
-        // Read HTTP headers and the declared request body.
-        while ((received = recv(
-                    clientSocket,
-                    buffer,
-                    sizeof(buffer),
-                    0)) > 0)
-        {
-            request.append(buffer, received);
-
-            headerEnd = request.find("\r\n\r\n");
-
-            if (headerEnd != string::npos)
-            {
-                size_t contentLengthPos =
-                    request.find("Content-Length:");
-
-                if (contentLengthPos != string::npos &&
-                    contentLengthPos < headerEnd)
-                {
-                    contentLengthPos += strlen("Content-Length:");
-
-                    while (contentLengthPos < headerEnd &&
-                           (request[contentLengthPos] == ' ' ||
-                            request[contentLengthPos] == '\t'))
-                        ++contentLengthPos;
-
-                    expectedBodyLength = static_cast<size_t>(
-                        strtoul(
-                            request.c_str() + contentLengthPos,
-                            nullptr,
-                            10
-                        )
-                    );
-                }
-
-                size_t bodyStart = headerEnd + 4;
-
-                if (request.size() >=
-                    bodyStart + expectedBodyLength)
-                    break;
-            }
-
-            if (request.size() > 1024 * 1024)
-                break;
-        }
-
-        string method;
-        string path;
-        string body;
-
-        size_t firstSpace = request.find(' ');
-        size_t secondSpace =
-            firstSpace == string::npos
-                ? string::npos
-                : request.find(' ', firstSpace + 1);
-
-        headerEnd = request.find("\r\n\r\n");
-
-        if (firstSpace != string::npos &&
-            secondSpace != string::npos &&
-            headerEnd != string::npos)
-        {
-            method = request.substr(0, firstSpace);
-            path = request.substr(
-                firstSpace + 1,
-                secondSpace - firstSpace - 1
-            );
-
-            body = request.substr(headerEnd + 4);
-
-            size_t queryPos = path.find('?');
-
-            if (queryPos != string::npos)
-                path = path.substr(0, queryPos);
-        }
-
-        string response;
-
-        if (method.empty() || path.empty())
-        {
-            response = httpResponse(
-                400,
-                "{\"error\":\"Malformed HTTP request\"}",
-                "Bad Request"
-            );
-        }
-        else
-        {
-            response = handleRequest(
-                method,
-                path,
-                body,
-                manager,
-                graph
-            );
-        }
-
-        sendAll(clientSocket, response);
-        shutdown(clientSocket, SHUTDOWN_SEND);
-        CLOSE_SOCKET(clientSocket);
+        std::thread clientThread(
+            processClient,
+            clientSocket,
+            std::ref(manager),
+            std::ref(graph),
+            std::ref(managerMutex)
+        );
+        clientThread.detach();
     }
 
     CLOSE_SOCKET(serverSocket);

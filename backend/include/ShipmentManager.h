@@ -17,6 +17,14 @@ private:
     Queue processingQueue;
     Blockchain blockchain;
     int nextTransactionID;
+    bool tampered;
+    int tamperedBlockIndex;
+    int tamperedEventIndex;
+    string originalLocation;
+    string originalHash;
+
+public:
+    ShipmentManager();
 
     bool recordEvent(
         int shipmentID,
@@ -24,9 +32,6 @@ private:
         string location,
         string status
     );
-
-public:
-    ShipmentManager();
 
     bool createShipment(Shipment shipment);
     Shipment* searchShipment(int shipmentID);
@@ -43,6 +48,11 @@ public:
     bool verifyBlockchain();
     string getBlockchainVerificationError();
     int getBlockchainBlockCount();
+
+    Block* getBlockchainHead();
+    bool tamperFirstEvent();
+    bool restoreTamper();
+    bool isTampered() const;
 };
 
 #endif
