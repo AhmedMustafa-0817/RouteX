@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10172a">
+  <meta name="description" content="Find the fastest city-to-city route in RouteX">
+  <title>Routes · RouteX</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="js/app.js"></script>
+  <script defer src="js/routes.js"></script>
+</head>
+<body data-page="routes">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="index.html" aria-label="RouteX overview">
+        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23.5 12.4 8l5.1 10.2 3.1-6.1L27 23.5"/><path d="M8.5 23.5h15"/></svg></span>
+        <span class="brand-name">route<span>x</span><small>SHIPMENT OPERATIONS</small></span>
+      </a>
+      <div class="sidebar-label">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <a class="nav-link" href="index.html"><span class="nav-icon">⌂</span><span>Overview</span></a>
+        <a class="nav-link" href="orders.html"><span class="nav-icon">▤</span><span>Orders &amp; shipments</span><span class="nav-count" id="navShipmentCount">—</span></a>
+        <a class="nav-link is-active" href="route.html" aria-current="page"><span class="nav-icon">⌁</span><span>Routes</span></a>
+        <a class="nav-link" href="index.html#blockchain-preview"><span class="nav-icon">⛓</span><span>Blockchain</span></a>
+      </nav>
+      <div class="sidebar-label sidebar-label-spaced">SYSTEM</div>
+      <div class="sidebar-system-card"><span class="system-orb"><span></span></span><div><strong>Local backend</strong><p id="sidebarApiText">Connecting to C++ API…</p></div></div>
+      <div class="sidebar-bottom"><div class="avatar">RX</div><div class="profile-copy"><strong>RouteX Workspace</strong><span>Development environment</span></div><span class="profile-dots">···</span></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menuToggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <div class="breadcrumbs"><a href="index.html">Workspace</a><span class="crumb-slash">/</span><strong>Routes</strong></div>
+        <div class="topbar-right"><div class="api-pill" id="apiPill"><span class="status-dot"></span><span id="apiPillText">Checking API</span></div><div class="top-avatar">RX</div></div>
+      </header>
+
+      <div class="page-content">
+        <section class="page-heading">
+          <div class="eyebrow"><span class="eyebrow-line"></span> ROUTE INTELLIGENCE</div>
+          <h1>Find the fastest route</h1>
+          <p class="page-subtitle">Pick two cities. The C++ backend runs Dijkstra's algorithm over the weighted city graph and returns the minimum-time path.</p>
+        </section>
+
+        <section class="panel route-form-panel">
+          <div class="panel-heading"><div><div class="panel-kicker">PLAN A ROUTE</div><h2>Choose cities</h2><p class="panel-subtitle">Edge weights are travel time in hours.</p></div></div>
+          <form id="routeForm" class="route-form">
+            <label class="form-field"><span>Source city <b>*</b></span><select id="routeSource" required></select></label>
+            <button type="button" class="route-swap" id="swapButton" aria-label="Swap source and destination">⇄</button>
+            <label class="form-field"><span>Destination city <b>*</b></span><select id="routeDestination" required></select></label>
+            <button class="button button-primary route-submit" id="findRouteButton" type="submit">Find fastest route</button>
+          </form>
+          <div class="route-quick"><span>Try:</span><button type="button" class="route-chip" data-from="Karachi" data-to="Lahore">Karachi → Lahore</button><button type="button" class="route-chip" data-from="Quetta" data-to="Islamabad">Quetta → Islamabad</button><button type="button" class="route-chip" data-from="Peshawar" data-to="Karachi">Peshawar → Karachi</button></div>
+        </section>
+
+        <section class="route-grid">
+          <article class="panel route-result-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">RESULT</div><h2>Fastest path</h2><p class="panel-subtitle" id="routeSubtitle">Select two cities to calculate a route.</p></div></div>
+            <div class="route-result" id="routeResult"><p class="route-empty">No route calculated yet.</p></div>
+          </article>
+
+          <article class="panel route-map-panel">
+            <div class="panel-heading"><div><div class="panel-kicker">NETWORK</div><h2>City graph</h2><p class="panel-subtitle">Selected route is highlighted.</p></div></div>
+            <div class="route-map-wrap"><svg id="routeMap" viewBox="0 0 680 300" role="img" aria-label="Map of the city network"></svg></div>
+            <div class="panel-footer"><span class="table-footer-dot"></span><span>Result computed by the backend Dijkstra implementation</span></div>
+          </article>
+        </section>
+
+        <footer class="page-footer"><span>© RouteX · Shipment operations</span><span>Graph <i></i> Min-heap <i></i> Dijkstra</span></footer>
+      </div>
+    </main>
+  </div>
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+</body>
+</html>
