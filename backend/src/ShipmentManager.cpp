@@ -8,7 +8,8 @@
 #include <sstream>
 
 ShipmentManager::ShipmentManager()
-    : registry(101), nextTransactionID(1)
+    : registry(101), nextTransactionID(1), tampered(false),
+      tamperedBlockIndex(-1), tamperedEventIndex(-1), originalLocation(""), originalHash("")
 {
 }
 
@@ -35,6 +36,17 @@ bool ShipmentManager::recordEvent(
         timestamp.str(),
         status
     );
+
+    if (blockchain.getTail() != nullptr &&
+        (blockchain.getTail()->getIndex() == 0 || blockchain.getTail()->getEventCount() >= 2))
+    {
+        Block* newBlock = new Block(
+            blockchain.getBlockCount(),
+            timestamp.str(),
+            ""
+        );
+        blockchain.addBlock(newBlock);
+    }
 
     if (!blockchain.addTransaction(event))
         return false;
@@ -169,6 +181,13 @@ bool ShipmentManager::loadAll(const string& filename)
             {
                 processingQueue.enqueue(shipments[i]);
             }
+
+            recordEvent(
+                id,
+                "CREATED",
+                shipments[i].getSourceCity(),
+                status
+            );
         }
     }
 
@@ -205,4 +224,94 @@ string ShipmentManager::getBlockchainVerificationError()
 int ShipmentManager::getBlockchainBlockCount()
 {
     return blockchain.getBlockCount();
+}
+
+Block* ShipmentManager::getBlockchainHead()
+{
+    return blockchain.getHead();
+}
+
+bool ShipmentManager::tamperFirstEvent()
+{
+    if (tampered)
+        return true;
+
+    Block* curr = blockchain.getHead();
+    while (curr != nullptr)
+    {
+        if (curr->getEventCount() > 0)
+        {
+            TransferEvent* ev = curr->getEventAt(0);
+            if (ev != nullptr)
+            {
+                originalLocation = ev->getLocation();
+                tamperedBlockIndex = curr->getIndex();
+                tamperedEventIndex = 0;
+                ev->setLocation("UNAUTHORIZED_LOCATION");
+                tampered = true;
+                return true;
+            }
+        }
+        curr = curr->getNext();
+    }
+
+    if (blockchain.getTail() != nullptr)
+    {
+        originalHash = blockchain.getTail()->getCurrentHash();
+        tamperedBlockIndex = blockchain.getTail()->getIndex();
+        blockchain.getTail()->setCurrentHash("tampered_corrupted_hash_value");
+        tampered = true;
+        return true;
+    }
+
+    return false;
+}
+
+bool ShipmentManager::restoreTamper()
+{
+    if (!tampered)
+        return true;
+
+    if (!originalLocation.empty() && tamperedBlockIndex >= 0)
+    {
+        Block* curr = blockchain.getHead();
+        while (curr != nullptr)
+        {
+            if (curr->getIndex() == tamperedBlockIndex)
+            {
+                TransferEvent* ev = curr->getEventAt(tamperedEventIndex);
+                if (ev != nullptr)
+                {
+                    ev->setLocation(originalLocation);
+                }
+                break;
+            }
+            curr = curr->getNext();
+        }
+    }
+    else if (!originalHash.empty() && tamperedBlockIndex >= 0)
+    {
+        Block* curr = blockchain.getHead();
+        while (curr != nullptr)
+        {
+            if (curr->getIndex() == tamperedBlockIndex)
+            {
+                curr->setCurrentHash(originalHash);
+                break;
+            }
+            curr = curr->getNext();
+        }
+    }
+
+    tampered = false;
+    originalLocation = "";
+    originalHash = "";
+    tamperedBlockIndex = -1;
+    tamperedEventIndex = -1;
+    return true;
+}
+
+bool ShipmentManager::isTampered() const
+{
+    return tampered;
 }

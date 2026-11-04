@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10172a">
+  <meta name="description" content="RouteX Cryptographic Blockchain Explorer and Tamper Verification">
+  <title>Blockchain Explorer · RouteX</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script defer src="js/app.js"></script>
+  <script defer src="js/blockchain.js"></script>
+</head>
+<body data-page="blockchain">
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="index.html" aria-label="RouteX overview">
+        <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M5 23.5 12.4 8l5.1 10.2 3.1-6.1L27 23.5"/><path d="M8.5 23.5h15"/></svg></span>
+        <span class="brand-name">route<span>x</span><small>SHIPMENT OPERATIONS</small></span>
+      </a>
+
+      <div class="sidebar-label">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <a class="nav-link" href="index.html"><span class="nav-icon">⌂</span><span>Overview</span></a>
+        <a class="nav-link" href="orders.html"><span class="nav-icon">▤</span><span>Orders &amp; shipments</span><span class="nav-count" id="navShipmentCount">—</span></a>
+        <a class="nav-link" href="route.html"><span class="nav-icon">⌁</span><span>Routes</span></a>
+        <a class="nav-link is-active" href="blockchain.html" aria-current="page"><span class="nav-icon">⛓</span><span>Blockchain</span></a>
+      </nav>
+
+      <div class="sidebar-label sidebar-label-spaced">SYSTEM</div>
+      <div class="sidebar-system-card"><span class="system-orb"><span></span></span><div><strong>Local backend</strong><p id="sidebarApiText">Connecting to C++ API…</p></div></div>
+      <div class="sidebar-bottom"><div class="avatar">RX</div><div class="profile-copy"><strong>RouteX Workspace</strong><span>Development environment</span></div><span class="profile-dots">···</span></div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <button class="icon-button menu-button" id="menuToggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+        <div class="breadcrumbs"><a href="index.html">Workspace</a><span class="crumb-slash">/</span><strong>Blockchain Explorer</strong></div>
+        <div class="topbar-right"><div class="api-pill" id="apiPill"><span class="status-dot"></span><span id="apiPillText">Checking API</span></div><div class="top-avatar">RX</div></div>
+      </header>
+
+      <div class="page-content">
+        <section class="page-heading heading-with-action">
+          <div>
+            <div class="eyebrow"><span class="eyebrow-line"></span> DATA INTEGRITY &amp; AUDIT TRAIL</div>
+            <h1>Blockchain Explorer</h1>
+            <p class="page-subtitle">Inspect cryptographic blocks, register node events, audit lifecycles, and verify SHA-256 chain integrity.</p>
+          </div>
+          <div class="heading-actions">
+            <button class="button button-primary" id="openRegisterModalBtn">
+              <span class="button-plus">+</span> Register block event
+            </button>
+            <button class="button button-secondary" id="verifyBlockchainBtn">
+              <span class="btn-icon">✓</span> Verify blockchain
+            </button>
+            <button class="button button-warning" id="tamperBtn" title="Simulate unauthorized tampering with in-memory block data">
+              <span class="btn-icon">⚠</span> Simulate tampering
+            </button>
+            <button class="button button-secondary is-hidden" id="restoreBtn" title="Restore original block contents">
+              <span class="btn-icon">↺</span> Restore integrity
+            </button>
+          </div>
+        </section>
+
+        <!-- Integrity Status Card -->
+        <section class="panel integrity-banner" id="integrityBanner" aria-live="polite">
+          <div class="integrity-banner-icon" id="integrityIcon">✓</div>
+          <div class="integrity-banner-content">
+            <div class="integrity-banner-header">
+              <h2 id="integrityTitle">Checking chain integrity…</h2>
+              <span class="integrity-badge" id="integrityBadge">Checking</span>
+            </div>
+            <p class="integrity-banner-desc" id="integrityDesc">Connecting to backend to recalculate cryptographic hashes across all linked blocks…</p>
+            <div class="integrity-banner-meta">
+              <span>Cryptographic engine: <strong>SHA-256</strong></span>
+              <span class="meta-dot"></span>
+              <span>Verification method: <strong>Sequential Hash Link Audit</strong></span>
+              <span class="meta-dot"></span>
+              <span id="lastVerifiedText">Last checked: —</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Metrics Overview -->
+        <section class="stats-grid" aria-label="Blockchain summary">
+          <article class="stat-card stat-card-primary">
+            <div class="stat-top"><span class="stat-label">Total blocks</span><span class="stat-icon stat-icon-indigo">⛓</span></div>
+            <div class="stat-value" id="statBlockCount">—</div>
+            <div class="stat-foot"><span class="stat-foot-dot indigo-dot"></span> In linked list memory</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">Recorded events</span><span class="stat-icon stat-icon-blue">▤</span></div>
+            <div class="stat-value" id="statTxCount">—</div>
+            <div class="stat-foot"><span class="stat-foot-dot blue-dot"></span> Across all blocks</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">Chain state</span><span class="stat-icon stat-icon-green" id="statStateIcon">✓</span></div>
+            <div class="stat-value" id="statChainState">—</div>
+            <div class="stat-foot" id="statChainStateFoot"><span class="stat-foot-dot green-dot"></span> Cryptographically verified</div>
+          </article>
+          <article class="stat-card">
+            <div class="stat-top"><span class="stat-label">Hashing core</span><span class="stat-icon stat-icon-amber">🔒</span></div>
+            <div class="stat-value">SHA-256</div>
+            <div class="stat-foot"><span class="stat-foot-dot amber-dot"></span> 256-bit hash chaining</div>
+          </article>
+        </section>
+
+        <!-- Node Blocks Visual Architecture Ribbon -->
+        <section class="panel ribbon-panel" id="ribbonSection">
+          <div class="panel-heading">
+            <div>
+              <div class="panel-kicker">CHAIN ARCHITECTURE</div>
+              <h2>Node Blocks Linkage</h2>
+              <p class="panel-subtitle">Visual representation of sequential block nodes linked by cryptographic hashes in C++ memory.</p>
+            </div>
+            <span class="status-badge status-delivered">Live Chaining</span>
+          </div>
+          <div class="chain-ribbon" id="chainRibbon">
+            <div class="ribbon-empty">Loading linked node blocks…</div>
+          </div>
+        </section>
+
+        <!-- Filter & Explorer Controls -->
+        <section class="panel filter-panel">
+          <div class="filter-bar">
+            <div class="filter-field">
+              <span class="filter-icon">🔍</span>
+              <input type="number" id="shipmentFilterInput" placeholder="Filter by Shipment ID (e.g. 103)" aria-label="Filter transactions by Shipment ID" min="1" step="1">
+              <button class="filter-clear is-hidden" id="clearFilterBtn" type="button" aria-label="Clear filter">✕</button>
+            </div>
+            <div class="filter-chips-wrap">
+              <span class="chips-label">Quick filter:</span>
+              <div class="filter-chips" id="shipmentChips"><span class="chips-empty">No shipment IDs yet</span></div>
+            </div>
+            <div class="filter-actions">
+              <button class="button button-secondary button-small" id="toggleExpandAllBtn" type="button">Expand all blocks</button>
+              <button class="button button-secondary button-small" id="refreshBlocksBtn" type="button" title="Refresh blockchain from backend">↻ Refresh</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Filtered Shipment Audit Trail (Displayed when filtering by shipment ID) -->
+        <section class="panel shipment-audit-card is-hidden" id="shipmentAuditCard">
+          <div class="panel-heading">
+            <div>
+              <div class="panel-kicker">LIFECYCLE AUDIT TRAIL</div>
+              <h2 id="auditTitle">Shipment History</h2>
+              <p class="panel-subtitle" id="auditSubtitle">Chronological transfer events extracted from verified blockchain blocks.</p>
+            </div>
+            <button class="button button-secondary button-small" id="closeAuditBtn" type="button">Show all transactions</button>
+          </div>
+          <div class="audit-timeline" id="auditTimeline"></div>
+        </section>
+
+        <!-- Blocks Section -->
+        <section class="blocks-container">
+          <div class="section-heading">
+            <div>
+              <h2>Cryptographic Blocks</h2>
+              <p class="section-subtitle">Each block encapsulates an index, timestamp, previous block hash, and ordered shipment transfer events.</p>
+            </div>
+            <div class="legend-hash-link">
+              <span class="legend-link-indicator"></span>
+              <span>Hash chaining: <code>Block[N].previousHash == Block[N-1].currentHash</code></span>
+            </div>
+          </div>
+
+          <div class="block-list" id="blockList">
+            <div class="block-empty-state">
+              <span class="loading-spinner"></span>
+              <p>Loading blockchain from C++ API…</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tamper Verification Walkthrough Card -->
+        <section class="panel demo-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="panel-kicker">INTERACTIVE LAB</div>
+              <h2>How Tampering Detection Works</h2>
+              <p class="panel-subtitle">Experience cryptographic immutability powered by SHA-256 and custom C++ linked lists.</p>
+            </div>
+          </div>
+          <div class="demo-steps-grid">
+            <div class="demo-step">
+              <div class="demo-step-num">1</div>
+              <strong>Valid State</strong>
+              <p>Every block's SHA-256 digest is calculated from its index, timestamp, previous hash, and transfer events. Verification recalculates every hash and confirms a match.</p>
+            </div>
+            <div class="demo-step">
+              <div class="demo-step-num">2</div>
+              <strong>Simulate Tamper</strong>
+              <p>Clicking <em>Simulate tampering</em> changes an event field (such as destination city) in memory without recalculating block hashes, mirroring an unauthorized database edit.</p>
+            </div>
+            <div class="demo-step">
+              <div class="demo-step-num">3</div>
+              <strong>Immediate Detection</strong>
+              <p>Verification detects the mismatch between the block's declared hash and the recalculated SHA-256 digest, identifying the compromised block and aborting verification.</p>
+            </div>
+            <div class="demo-step">
+              <div class="demo-step-num">4</div>
+              <strong>Restore &amp; Re-verify</strong>
+              <p>Restoring integrity reverts the altered data. Verification immediately succeeds again with zero discrepancies.</p>
+            </div>
+          </div>
+        </section>
+
+        <footer class="page-footer">
+          <span>© RouteX · Shipment operations</span>
+          <span>Built with C++ &amp; custom data structures <i></i> <span id="footerApiStatus">API status unknown</span></span>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <!-- Register Block Event Modal -->
+  <dialog class="modal-dialog" id="registerModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="panel-kicker">BLOCKCHAIN NODE REGISTRY</div>
+          <h3>Register Block Event</h3>
+          <p class="modal-subtitle">Record a transfer event into the blockchain. A new block is automatically appended upon reaching batch capacity.</p>
+        </div>
+        <button class="modal-close-btn" id="closeRegisterModalBtn" type="button" aria-label="Close modal">✕</button>
+      </div>
+      <form id="registerBlockForm" class="modal-form">
+        <div class="form-row">
+          <label class="form-field">
+            <span>Shipment ID <b>*</b></span>
+            <input type="number" id="regShipmentID" required min="1" step="1" placeholder="e.g. 105">
+          </label>
+          <label class="form-field">
+            <span>Event Type <b>*</b></span>
+            <select id="regEventType" required>
+              <option value="CREATED">CREATED</option>
+              <option value="DISPATCHED">DISPATCHED</option>
+              <option value="ARRIVED">ARRIVED</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label class="form-field">
+            <span>Location / Hub <b>*</b></span>
+            <select id="regLocation" required>
+              <option value="Karachi">Karachi</option>
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Sukkur">Sukkur</option>
+              <option value="Multan">Multan</option>
+              <option value="Lahore">Lahore</option>
+              <option value="Islamabad">Islamabad</option>
+              <option value="Quetta">Quetta</option>
+              <option value="Peshawar">Peshawar</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>Status description</span>
+            <input type="text" id="regStatus" placeholder="e.g. Registered at terminal">
+          </label>
+        </div>
+        <div class="modal-quick-presets">
+          <span>Quick presets:</span>
+          <button type="button" class="route-chip" id="presetCreatedBtn">CREATED @ Karachi</button>
+          <button type="button" class="route-chip" id="presetDispatchedBtn">DISPATCHED @ Sukkur</button>
+          <button type="button" class="route-chip" id="presetArrivedBtn">ARRIVED @ Lahore</button>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="button button-secondary" id="cancelRegisterModalBtn">Cancel</button>
+          <button type="submit" class="button button-primary" id="submitRegisterBtn">Record &amp; Register Block</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+</body>
+</html>
