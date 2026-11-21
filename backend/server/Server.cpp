@@ -1,0 +1,880 @@
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <ws2tcpip.h>
+using SocketHandle = SOCKET;
+#define CLOSE_SOCKET closesocket
+#define SHUTDOWN_SEND SD_SEND
+#else
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/time.h>
+#include <unistd.h>
+using SocketHandle = int;
+#define INVALID_SOCKET (-1)
+#define SOCKET_ERROR (-1)
+#define CLOSE_SOCKET close
+#define SHUTDOWN_SEND SHUT_WR
+#define WSACleanup() ((void)0)
+#endif
+
+#include "../include/ShipmentManager.h"
+#include "../include/Graph.h"
+#include "../include/RouteService.h"
+
+#include <iostream>
+#include <string>
+#include <sstream>
+#include <cstdlib>
+#include <cstring>
+#include <thread>
+#include <mutex>
+
+using std::string;
+using std::stringstream;
+using std::cout;
+using std::cerr;
+using std::endl;
+
+// Escape special characters for JSON.
+string jsonEscape(const string& value)
+{
+    string result;
+
+    for (char c : value)
+    {
+        switch (c)
+        {
+        case '"':  result += "\\\""; break;
+        case '\\': result += "\\\\"; break;
+        case '\n': result += "\\n"; break;
+        case '\r': result += "\\r"; break;
+        case '\t': result += "\\t"; break;
+        default:
+            if (static_cast<unsigned char>(c) >= 32)
+                result += c;
+        }
+    }
+
+    return result;
+}
+
+string jsonString(const string& value)
+{
+    return "\"" + jsonEscape(value) + "\"";
+}
+
+// Read a string value from a simple JSON request body.
+string getJsonString(const string& body, const string& key)
+{
+    string search = "\"" + key + "\"";
+    size_t pos = body.find(search);
+
+    if (pos == string::npos)
+        return "";
+
+    pos = body.find(':', pos + search.size());
+
+    if (pos == string::npos)
+        return "";
+
+    pos = body.find('"', pos + 1);
+
+    if (pos == string::npos)
+        return "";
+
+    size_t end = body.find('"', pos + 1);
+
+    if (end == string::npos)
+        return "";
+
+    return body.substr(pos + 1, end - pos - 1);
+}
+
+// Read a numeric value from a simple JSON request body.
+bool getJsonNumber(
+    const string& body,
+    const string& key,
+    double& value)
+{
+    string search = "\"" + key + "\"";
+    size_t pos = body.find(search);
+
+    if (pos == string::npos)
+        return false;
+
+    pos = body.find(':', pos + search.size());
+
+    if (pos == string::npos)
+        return false;
+
+    ++pos;
+
+    while (pos < body.size() &&
+           (body[pos] == ' ' || body[pos] == '\t'))
+        ++pos;
+
+    char* end = nullptr;
+    value = strtod(body.c_str() + pos, &end);
+
+    return end != body.c_str() + pos;
+}
+
+// Build an HTTP response.
+string httpResponse(
+    int status,
+    const string& body,
+    const string& statusText = "OK")
+{
+    stringstream response;
+
+    response << "HTTP/1.1 " << status << " "
+             << statusText << "\r\n";
+    response << "Content-Type: application/json; charset=utf-8\r\n";
+    response << "Access-Control-Allow-Origin: *\r\n";
+    response << "Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE\r\n";
+    response << "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Access-Control-Request-Private-Network\r\n";
+    response << "Access-Control-Allow-Private-Network: true\r\n";
+    response << "Content-Length: " << body.size() << "\r\n";
+    response << "Connection: close\r\n\r\n";
+    response << body;
+
+    return response.str();
+}
+
+bool sendAll(SocketHandle client, const string& data)
+{
+#ifndef _WIN32
+    // On macOS, writing to a disconnected client can otherwise raise SIGPIPE
+    // and terminate the whole API process. Keep the failure local to this request.
+    int suppressSigPipe = 1;
+    setsockopt(
+        client,
+        SOL_SOCKET,
+        SO_NOSIGPIPE,
+        &suppressSigPipe,
+        sizeof(suppressSigPipe)
+    );
+#endif
+
+    size_t sent = 0;
+
+    while (sent < data.size())
+    {
+        int result = send(
+            client,
+            data.c_str() + sent,
+            static_cast<int>(data.size() - sent),
+            0
+        );
+
+        if (result <= 0)
+            return false;
+
+        sent += static_cast<size_t>(result);
+    }
+
+    return true;
+}
+
+// API endpoints.
+string handleRequest(
+    const string& method,
+    const string& path,
+    const string& body,
+    ShipmentManager& manager,
+    CityGraph& graph)
+{
+    if (method == "OPTIONS")
+        return httpResponse(200, "{\"ok\":true}");
+
+    if (method == "GET" && path == "/")
+    {
+        return httpResponse(
+            200,
+            "{\"name\":\"RouteX API\",\"status\":\"running\"}"
+        );
+    }
+
+    // GET /api/shipments
+    if (method == "GET" && path == "/api/shipments")
+    {
+        Shipment shipments[500];
+        int count = manager.getAllShipments(shipments, 500);
+
+        stringstream json;
+        json << "{\"shipments\":[";
+
+        for (int i = 0; i < count; ++i)
+        {
+            if (i > 0)
+                json << ",";
+
+            json << "{"
+                 << "\"shipmentID\":"
+                 << shipments[i].getShipmentID() << ","
+                 << "\"sourceCity\":"
+                 << jsonString(shipments[i].getSourceCity()) << ","
+                 << "\"destinationCity\":"
+                 << jsonString(shipments[i].getDestinationCity()) << ","
+                 << "\"packageType\":"
+                 << jsonString(shipments[i].getPackageType()) << ","
+                 << "\"weight\":"
+                 << shipments[i].getWeight() << ","
+                 << "\"status\":"
+                 << jsonString(shipments[i].getStatus())
+                 << "}";
+        }
+
+        json << "],\"count\":" << count << "}";
+        return httpResponse(200, json.str());
+    }
+
+    // POST /api/shipments
+    if (method == "POST" && path == "/api/shipments")
+    {
+        double idValue = 0;
+        double weight = 0;
+
+        if (!getJsonNumber(body, "shipmentID", idValue) ||
+            !getJsonNumber(body, "weight", weight))
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"shipmentID and weight are required\"}",
+                "Bad Request"
+            );
+        }
+
+        string source = getJsonString(body, "sourceCity");
+        string destination = getJsonString(body, "destinationCity");
+        string packageType = getJsonString(body, "packageType");
+        string status = getJsonString(body, "status");
+
+        if (source.empty() ||
+            destination.empty() ||
+            packageType.empty() ||
+            idValue <= 0 ||
+            idValue != static_cast<int>(idValue) ||
+            weight <= 0)
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"Invalid shipment fields\"}",
+                "Bad Request"
+            );
+        }
+
+        if (status.empty())
+            status = "Pending";
+
+        Shipment shipment(
+            static_cast<int>(idValue),
+            source,
+            destination,
+            packageType,
+            weight,
+            status
+        );
+
+        if (!manager.createShipment(shipment))
+        {
+            return httpResponse(
+                409,
+                "{\"error\":\"Shipment could not be created; ID may already exist\"}",
+                "Conflict"
+            );
+        }
+
+        if (!manager.saveAll("data/shipments.csv"))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Shipment created in memory but CSV persistence failed\"}",
+                "Internal Server Error"
+            );
+        }
+
+        return httpResponse(
+            201,
+            "{\"message\":\"Shipment created successfully\"}",
+            "Created"
+        );
+    }
+
+    // POST /api/shipments/search
+    // Uses ShipmentManager::searchShipment(), which delegates to the custom Hash Table.
+    if (method == "POST" && path == "/api/shipments/search")
+    {
+        double idValue = 0;
+
+        if (!getJsonNumber(body, "shipmentID", idValue) ||
+            idValue <= 0 || idValue != static_cast<int>(idValue))
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"A positive integer shipmentID is required\"}",
+                "Bad Request"
+            );
+        }
+
+        Shipment* shipment = manager.searchShipment(static_cast<int>(idValue));
+        if (shipment == nullptr)
+        {
+            return httpResponse(404, "{\"error\":\"Shipment not found\"}", "Not Found");
+        }
+
+        stringstream json;
+        json << "{"
+             << "\"shipmentID\":" << shipment->getShipmentID() << ","
+             << "\"sourceCity\":" << jsonString(shipment->getSourceCity()) << ","
+             << "\"destinationCity\":" << jsonString(shipment->getDestinationCity()) << ","
+             << "\"packageType\":" << jsonString(shipment->getPackageType()) << ","
+             << "\"weight\":" << shipment->getWeight() << ","
+             << "\"status\":" << jsonString(shipment->getStatus())
+             << "}";
+        return httpResponse(200, json.str());
+    }
+
+    // POST /api/shipments/process-next
+    if (method == "POST" && path == "/api/shipments/process-next")
+    {
+        if (!manager.processNextShipment())
+        {
+            return httpResponse(
+                409,
+                "{\"error\":\"The processing queue is empty\"}",
+                "Conflict"
+            );
+        }
+
+        if (!manager.saveAll("data/shipments.csv"))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Shipment processed in memory but CSV persistence failed\"}",
+                "Internal Server Error"
+            );
+        }
+
+        return httpResponse(200, "{\"message\":\"Next shipment processed\"}");
+    }
+
+    // POST /api/shipments/arrival
+    // Body: { "shipmentID": 103, "location": "Hyderabad" }
+    if (method == "POST" && path == "/api/shipments/arrival")
+    {
+        double idValue = 0;
+        string location = getJsonString(body, "location");
+
+        if (!getJsonNumber(body, "shipmentID", idValue) ||
+            idValue <= 0 || idValue != static_cast<int>(idValue) ||
+            location.empty())
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"A valid shipmentID and location are required\"}",
+                "Bad Request"
+            );
+        }
+
+        if (!manager.recordArrival(static_cast<int>(idValue), location))
+        {
+            return httpResponse(
+                409,
+                "{\"error\":\"Shipment was not found or is not DISPATCHED\"}",
+                "Conflict"
+            );
+        }
+
+        if (!manager.saveAll("data/shipments.csv"))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Arrival recorded in memory but CSV persistence failed\"}",
+                "Internal Server Error"
+            );
+        }
+
+        return httpResponse(200, "{\"message\":\"Shipment arrival recorded\"}");
+    }
+
+    // POST /api/routes/fastest
+    if (method == "POST" && path == "/api/routes/fastest")
+    {
+        string source = getJsonString(body, "source");
+        string destination = getJsonString(body, "destination");
+
+        if (source.empty() || destination.empty())
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"source and destination are required\"}",
+                "Bad Request"
+            );
+        }
+
+        RouteService routeService(graph);
+        RouteResult route =
+            routeService.fastestRoute(source, destination);
+
+        if (!route.found)
+        {
+            return httpResponse(
+                404,
+                "{\"error\":\"No route found\"}",
+                "Not Found"
+            );
+        }
+
+        stringstream json;
+        json << "{\"found\":true,\"totalHours\":"
+             << route.totalHours << ",\"path\":[";
+
+        for (int i = 0; i < route.pathLength; ++i)
+        {
+            if (i > 0)
+                json << ",";
+
+            json << jsonString(route.path[i]);
+        }
+
+        json << "]}";
+        return httpResponse(200, json.str());
+    }
+
+    // GET /api/blockchain
+    if (method == "GET" && path == "/api/blockchain")
+    {
+        stringstream json;
+        json << "{\"blockCount\":"
+             << manager.getBlockchainBlockCount()
+             << ",\"blocks\":[";
+
+        Block* block = manager.getBlockchainHead();
+        bool firstBlock = true;
+
+        while (block != nullptr)
+        {
+            if (!firstBlock)
+                json << ",";
+            firstBlock = false;
+
+            json << "{"
+                 << "\"index\":" << block->getIndex() << ","
+                 << "\"timestamp\":" << jsonString(block->getTimestamp()) << ","
+                 << "\"previousHash\":" << jsonString(block->getPreviousHash()) << ","
+                 << "\"currentHash\":" << jsonString(block->getCurrentHash()) << ","
+                 << "\"eventCount\":" << block->getEventCount() << ","
+                 << "\"transactions\":[";
+
+            for (int i = 0; i < block->getEventCount(); ++i)
+            {
+                if (i > 0)
+                    json << ",";
+
+                TransferEvent* ev = block->getEventAt(i);
+                if (ev != nullptr)
+                {
+                    json << "{"
+                         << "\"transactionID\":" << ev->getTransactionID() << ","
+                         << "\"shipmentID\":" << ev->getShipmentID() << ","
+                         << "\"eventType\":" << jsonString(ev->getEventType()) << ","
+                         << "\"location\":" << jsonString(ev->getLocation()) << ","
+                         << "\"timestamp\":" << jsonString(ev->getTimestamp()) << ","
+                         << "\"status\":" << jsonString(ev->getStatus())
+                         << "}";
+                }
+            }
+
+            json << "]}";
+            block = block->getNext();
+        }
+
+        json << "]}";
+        return httpResponse(200, json.str());
+    }
+
+    // GET /api/blockchain/verify
+    if (method == "GET" && path == "/api/blockchain/verify")
+    {
+        bool valid = manager.verifyBlockchain();
+
+        stringstream json;
+        json << "{\"valid\":"
+             << (valid ? "true" : "false")
+             << ",\"error\":"
+             << jsonString(
+                    valid ? "" :
+                    manager.getBlockchainVerificationError()
+                )
+             << ",\"isTampered\":"
+             << (manager.isTampered() ? "true" : "false")
+             << "}";
+
+        return httpResponse(200, json.str());
+    }
+
+    // POST /api/blockchain/tamper
+    if (method == "POST" && path == "/api/blockchain/tamper")
+    {
+        if (!manager.tamperFirstEvent())
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Failed to tamper with blockchain state\"}",
+                "Internal Server Error"
+            );
+        }
+
+        return httpResponse(
+            200,
+            "{\"message\":\"Blockchain event tampered in memory without updating SHA-256 hashes.\",\"tampered\":true}"
+        );
+    }
+
+    // POST /api/blockchain/register (or /api/blockchain/events)
+    if (method == "POST" && (path == "/api/blockchain/register" || path == "/api/blockchain/events"))
+    {
+        double idValue = 0;
+        getJsonNumber(body, "shipmentID", idValue);
+        string eventType = getJsonString(body, "eventType");
+        string location = getJsonString(body, "location");
+        string status = getJsonString(body, "status");
+
+        if (idValue <= 0 || eventType.empty())
+        {
+            return httpResponse(
+                400,
+                "{\"error\":\"A valid positive shipmentID and eventType are required\"}",
+                "Bad Request"
+            );
+        }
+
+        if (location.empty())
+            location = "Warehouse Hub";
+        if (status.empty())
+            status = eventType;
+
+        // A manual registration always seals its own block, so the explorer
+        // shows a new block for every "Record & Register Block" action.
+        if (!manager.recordEvent(static_cast<int>(idValue), eventType, location, status, true))
+        {
+            return httpResponse(
+                500,
+                "{\"error\":\"Failed to record event to blockchain\"}",
+                "Internal Server Error"
+            );
+        }
+
+        stringstream json;
+        json << "{\"message\":\"Event recorded in blockchain successfully\","
+             << "\"blockCount\":" << manager.getBlockchainBlockCount() << ","
+             << "\"blockIndex\":" << manager.getBlockchainBlockCount() - 1
+             << "}";
+
+        return httpResponse(201, json.str(), "Created");
+    }
+
+    // POST /api/blockchain/restore or /api/blockchain/reset
+    if (method == "POST" && (path == "/api/blockchain/restore" || path == "/api/blockchain/reset"))
+    {
+        manager.restoreTamper();
+        return httpResponse(
+            200,
+            "{\"message\":\"Blockchain restored to original untampered state.\",\"tampered\":false}"
+        );
+    }
+
+    return httpResponse(
+        404,
+        "{\"error\":\"Endpoint not found\"}",
+        "Not Found"
+    );
+}
+
+// Sample route network.
+void setupRoutes(CityGraph& graph)
+{
+    graph.addCity("Karachi");
+    graph.addCity("Hyderabad");
+    graph.addCity("Sukkur");
+    graph.addCity("Quetta");
+    graph.addCity("Multan");
+    graph.addCity("Lahore");
+    graph.addCity("Islamabad");
+    graph.addCity("Peshawar");
+
+    graph.addEdge("Karachi", "Hyderabad", 2);
+    graph.addEdge("Hyderabad", "Sukkur", 5);
+    graph.addEdge("Sukkur", "Multan", 6);
+    graph.addEdge("Multan", "Lahore", 4);
+    graph.addEdge("Lahore", "Islamabad", 4);
+    graph.addEdge("Islamabad", "Peshawar", 3);
+    graph.addEdge("Quetta", "Sukkur", 7);
+    graph.addEdge("Karachi", "Quetta", 10);
+}
+
+
+void processClient(
+    SocketHandle clientSocket,
+    ShipmentManager& manager,
+    CityGraph& graph,
+    std::mutex& managerMutex)
+{
+#ifdef _WIN32
+    DWORD timeoutMs = 3000;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+    setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&timeoutMs), sizeof(timeoutMs));
+#else
+    struct timeval tv;
+    tv.tv_sec = 3;
+    tv.tv_usec = 0;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+    setsockopt(clientSocket, SOL_SOCKET, SO_SNDTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+#endif
+
+    string request;
+    char buffer[4096];
+    int received = 0;
+
+    size_t headerEnd = string::npos;
+    size_t expectedBodyLength = 0;
+
+    // Read HTTP headers and the declared request body.
+    while ((received = recv(
+                clientSocket,
+                buffer,
+                sizeof(buffer),
+                0)) > 0)
+    {
+        request.append(buffer, received);
+
+        headerEnd = request.find("\r\n\r\n");
+
+        if (headerEnd != string::npos)
+        {
+            size_t contentLengthPos = string::npos;
+            for (size_t i = 0; i + 15 <= headerEnd; ++i)
+            {
+                if ((request[i] == 'C' || request[i] == 'c') &&
+                    (request[i+1] == 'o' || request[i+1] == 'O') &&
+                    (request[i+2] == 'n' || request[i+2] == 'N') &&
+                    (request[i+3] == 't' || request[i+3] == 'T') &&
+                    (request[i+4] == 'e' || request[i+4] == 'E') &&
+                    (request[i+5] == 'n' || request[i+5] == 'N') &&
+                    (request[i+6] == 't' || request[i+6] == 'T') &&
+                    request[i+7] == '-' &&
+                    (request[i+8] == 'l' || request[i+8] == 'L') &&
+                    (request[i+9] == 'e' || request[i+9] == 'E') &&
+                    (request[i+10] == 'n' || request[i+10] == 'N') &&
+                    (request[i+11] == 'g' || request[i+11] == 'G') &&
+                    (request[i+12] == 't' || request[i+12] == 'T') &&
+                    (request[i+13] == 'h' || request[i+13] == 'H') &&
+                    request[i+14] == ':')
+                {
+                    contentLengthPos = i + 15;
+                    break;
+                }
+            }
+
+            if (contentLengthPos != string::npos)
+            {
+                while (contentLengthPos < headerEnd &&
+                       (request[contentLengthPos] == ' ' ||
+                        request[contentLengthPos] == '\t'))
+                    ++contentLengthPos;
+
+                expectedBodyLength = static_cast<size_t>(
+                    strtoul(
+                        request.c_str() + contentLengthPos,
+                        nullptr,
+                        10
+                    )
+                );
+            }
+
+            size_t bodyStart = headerEnd + 4;
+
+            if (request.size() >= bodyStart + expectedBodyLength)
+                break;
+        }
+
+        if (request.size() > 1024 * 1024)
+            break;
+    }
+
+    if (request.empty())
+    {
+        CLOSE_SOCKET(clientSocket);
+        return;
+    }
+
+    string method;
+    string path;
+    string body;
+
+    size_t firstSpace = request.find(' ');
+    size_t secondSpace =
+        firstSpace == string::npos
+            ? string::npos
+            : request.find(' ', firstSpace + 1);
+
+    headerEnd = request.find("\r\n\r\n");
+
+    if (firstSpace != string::npos &&
+        secondSpace != string::npos &&
+        headerEnd != string::npos)
+    {
+        method = request.substr(0, firstSpace);
+        path = request.substr(
+            firstSpace + 1,
+            secondSpace - firstSpace - 1
+        );
+
+        body = request.substr(headerEnd + 4);
+
+        size_t queryPos = path.find('?');
+
+        if (queryPos != string::npos)
+            path = path.substr(0, queryPos);
+    }
+
+    string response;
+
+    if (method.empty() || path.empty())
+    {
+        response = httpResponse(
+            400,
+            "{\"error\":\"Malformed HTTP request\"}",
+            "Bad Request"
+        );
+    }
+    else
+    {
+        std::lock_guard<std::mutex> lock(managerMutex);
+        response = handleRequest(
+            method,
+            path,
+            body,
+            manager,
+            graph
+        );
+    }
+
+    sendAll(clientSocket, response);
+
+    shutdown(clientSocket, SHUTDOWN_SEND);
+#ifdef _WIN32
+    DWORD drainTimeout = 50;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&drainTimeout), sizeof(drainTimeout));
+#endif
+    char drain[512];
+    while (recv(clientSocket, drain, sizeof(drain), 0) > 0) {}
+    CLOSE_SOCKET(clientSocket);
+}
+
+int main(int argc, char* argv[])
+{
+    int serverPort = 8090;
+    if (argc > 1)
+    {
+        char* end = nullptr;
+        long requestedPort = strtol(argv[1], &end, 10);
+        if (end == argv[1] || *end != '\0' || requestedPort < 1024 || requestedPort > 65535)
+        {
+            cerr << "Usage: routex_api [port (1024-65535)]\n";
+            return 1;
+        }
+        serverPort = static_cast<int>(requestedPort);
+    }
+
+#ifdef _WIN32
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+    {
+        cerr << "Winsock initialization failed.\n";
+        return 1;
+    }
+#endif
+
+    SocketHandle serverSocket =
+        socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+    if (serverSocket == INVALID_SOCKET)
+    {
+        cerr << "Could not create server socket.\n";
+        WSACleanup();
+        return 1;
+    }
+
+    sockaddr_in serverAddress{};
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(static_cast<unsigned short>(serverPort));
+
+    serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    int reuseAddress = 1;
+    setsockopt(
+        serverSocket,
+        SOL_SOCKET,
+        SO_REUSEADDR,
+        reinterpret_cast<const char*>(&reuseAddress),
+        sizeof(reuseAddress)
+    );
+
+    if (::bind(
+            serverSocket,
+            reinterpret_cast<sockaddr*>(&serverAddress),
+            sizeof(serverAddress)) == -1)
+    {
+        cerr << "Bind failed. Port " << serverPort << " may already be in use.\n";
+        CLOSE_SOCKET(serverSocket);
+        return 1;
+    }
+
+    if (listen(serverSocket, SOMAXCONN) == SOCKET_ERROR)
+    {
+        cerr << "Listen failed.\n";
+        CLOSE_SOCKET(serverSocket);
+        WSACleanup();
+        return 1;
+    }
+
+    ShipmentManager manager;
+    if (!manager.loadAll("data/shipments.csv"))
+        cout << "Warning: could not load data/shipments.csv; starting with an empty registry.\n";
+
+    CityGraph graph;
+    setupRoutes(graph);
+
+    cout << "RouteX API running at http://127.0.0.1:" << serverPort << std::endl;
+
+    std::mutex managerMutex;
+
+    while (true)
+    {
+        SocketHandle clientSocket =
+            accept(serverSocket, nullptr, nullptr);
+
+        if (clientSocket == INVALID_SOCKET)
+            continue;
+
+        std::thread clientThread(
+            processClient,
+            clientSocket,
+            std::ref(manager),
+            std::ref(graph),
+            std::ref(managerMutex)
+        );
+        clientThread.detach();
+    }
+
+    CLOSE_SOCKET(serverSocket);
+    WSACleanup();
+    return 0;
+}
