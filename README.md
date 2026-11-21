@@ -475,11 +475,19 @@ cmake -B build
 cmake --build build
 ```
 
-Run:
+Run the command-line demo:
 
 ```bash
 ./build/routex
 ```
+
+To run the browser application, start the API from the repository root:
+
+```bash
+./build/routex_api
+```
+
+Keep that terminal open, then serve the `frontend/` directory with VS Code Live Server (or another local static server) and open `frontend/index.html`. The API uses `data/shipments.csv` relative to the repository root and listens on `http://127.0.0.1:8090`.
 
 ---
 
