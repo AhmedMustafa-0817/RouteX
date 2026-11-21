@@ -17,7 +17,8 @@ bool ShipmentManager::recordEvent(
     int shipmentID,
     string eventType,
     string location,
-    string status)
+    string status,
+    bool startNewBlock)
 {
     time_t now = time(nullptr);
     tm* localTime = localtime(&now);
@@ -37,15 +38,23 @@ bool ShipmentManager::recordEvent(
         status
     );
 
-    if (blockchain.getTail() != nullptr &&
-        (blockchain.getTail()->getIndex() == 0 || blockchain.getTail()->getEventCount() >= 2))
+    // Seal a new block when the caller asks for one, when the tail is the
+    // genesis block, or when the tail already holds its 2 events.
+    Block* tail = blockchain.getTail();
+    if (tail != nullptr &&
+        (startNewBlock || tail->getIndex() == 0 || tail->getEventCount() >= 2))
     {
         Block* newBlock = new Block(
             blockchain.getBlockCount(),
             timestamp.str(),
             ""
         );
-        blockchain.addBlock(newBlock);
+
+        if (!blockchain.addBlock(newBlock))
+        {
+            delete newBlock;
+            return false;
+        }
     }
 
     if (!blockchain.addTransaction(event))

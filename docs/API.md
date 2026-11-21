@@ -103,7 +103,12 @@ Runs `verifyChain()` across the entire linked list, recalculating SHA-256 hashes
 Returns `{"valid": true, "error": "", "isTampered": false}` or `{"valid": false, "error": "...", "isTampered": true}`.
 
 ### `POST /api/blockchain/register`
-Records a new transfer event directly into the blockchain from the frontend explorer, appending a new block when batch size is reached.
+Records a new transfer event directly into the blockchain from the frontend explorer. Each registration always seals its own new block. Automatic lifecycle events (shipment created, dispatched or arrived) still batch up to 2 events per block.
+
+Example response (`201 Created`):
+```json
+{ "message": "Event recorded in blockchain successfully", "blockCount": 4, "blockIndex": 3 }
+```
 
 Example request body:
 ```json
@@ -123,6 +128,6 @@ Restores the original blockchain event state so verification passes again.
 
 ## Running
 
-Build the project with CMake, then start `routex_api` from the repository root so the relative path `data/shipments.csv` resolves correctly. The API listens on `http://127.0.0.1:8090` by default. To specify a custom port, pass it as an argument (e.g. `./build/routex_api.exe 8090`). Serve the `frontend/` directory with a local static server (for example, VS Code Live Server) and open `index.html`, `orders.html`, `route.html`, or `blockchain.html`.
+Build the project with CMake, then start `routex_api` from the repository root so the relative path `data/shipments.csv` resolves correctly. On macOS or Linux, run `./build/routex_api`; on Windows, run `build\\Debug\\routex_api.exe` for a Visual Studio generator or `build\\routex_api.exe` for a single-configuration generator. The API listens on `http://127.0.0.1:8090` by default. To specify a custom port, pass it as an argument (for example, `./build/routex_api 8091` on macOS/Linux). Serve the `frontend/` directory with a local static server (for example, VS Code Live Server) and open `index.html`, `orders.html`, `route.html`, or `blockchain.html`.
 
 The current CSV format is intentionally simple: fields must not contain commas or line breaks. The blockchain is maintained in memory during runtime with verified SHA-256 block linking.

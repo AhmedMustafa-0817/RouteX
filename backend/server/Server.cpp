@@ -12,6 +12,7 @@ using SocketHandle = SOCKET;
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/time.h>
 #include <unistd.h>
 using SocketHandle = int;
 #define INVALID_SOCKET (-1)
@@ -147,6 +148,19 @@ string httpResponse(
 
 bool sendAll(SocketHandle client, const string& data)
 {
+#ifndef _WIN32
+    // On macOS, writing to a disconnected client can otherwise raise SIGPIPE
+    // and terminate the whole API process. Keep the failure local to this request.
+    int suppressSigPipe = 1;
+    setsockopt(
+        client,
+        SOL_SOCKET,
+        SO_NOSIGPIPE,
+        &suppressSigPipe,
+        sizeof(suppressSigPipe)
+    );
+#endif
+
     size_t sent = 0;
 
     while (sent < data.size())
@@ -546,7 +560,9 @@ string handleRequest(
         if (status.empty())
             status = eventType;
 
-        if (!manager.recordEvent(static_cast<int>(idValue), eventType, location, status))
+        // A manual registration always seals its own block, so the explorer
+        // shows a new block for every "Record & Register Block" action.
+        if (!manager.recordEvent(static_cast<int>(idValue), eventType, location, status, true))
         {
             return httpResponse(
                 500,
@@ -557,7 +573,8 @@ string handleRequest(
 
         stringstream json;
         json << "{\"message\":\"Event recorded in blockchain successfully\","
-             << "\"blockCount\":" << manager.getBlockchainBlockCount()
+             << "\"blockCount\":" << manager.getBlockchainBlockCount() << ","
+             << "\"blockIndex\":" << manager.getBlockchainBlockCount() - 1
              << "}";
 
         return httpResponse(201, json.str(), "Created");

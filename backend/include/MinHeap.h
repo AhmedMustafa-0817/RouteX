@@ -15,6 +15,9 @@ private:
     int capacity;
 
     bool hasHigherPriority(HeapNode a, HeapNode b) const;
+    void swapNodes(int first, int second);
+
+    // Both are recursive. Recursion depth is the heap height, O(log n).
     void siftUp(int index);
     void siftDown(int index);
     void grow();

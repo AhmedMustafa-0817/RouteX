@@ -1,4 +1,5 @@
 #include "../include/Graph.h"
+#include "../include/MinHeap.h"
 #include <limits>
 #include <algorithm>
 
@@ -20,7 +21,6 @@ RouteResult CityGraph::dijkstra(
     CityNode* cities[MAX_GRAPH_CITIES] = {};
     double distance[MAX_GRAPH_CITIES];
     int previous[MAX_GRAPH_CITIES];
-    bool visited[MAX_GRAPH_CITIES] = {};
 
     const double INF = std::numeric_limits<double>::infinity();
 
@@ -40,27 +40,24 @@ RouteResult CityGraph::dijkstra(
 
     distance[start->index] = 0.0;
 
-    for (int step = 0; step < cityCount; ++step)
+    // Priority queue of (distance, city), backed by the recursive MinHeap.
+    MinHeap pq(cityCount);
+    pq.push(0.0, start->index);
+
+    HeapNode top;
+
+    while (pq.pop(top))
     {
-        int current = -1;
-        double bestDistance = INF;
+        int current = top.cityIndex;
 
-        for (int i = 0; i < cityCount; ++i)
-        {
-            if (!visited[i] && distance[i] < bestDistance)
-            {
-                bestDistance = distance[i];
-                current = i;
-            }
-        }
+        // Skip stale entries: a shorter distance to this city was
+        // already found and processed after this entry was pushed.
+        if (top.distance > distance[current])
+            continue;
 
-        if (current == -1)
-            break;
-
+        // The destination's distance is final once it is popped.
         if (current == finish->index)
             break;
-
-        visited[current] = true;
 
         CityNode* currentCity = cities[current];
 
@@ -77,9 +74,10 @@ RouteResult CityGraph::dijkstra(
 
             int next = edge->destination->index;
 
-            if (next < 0 || next >= cityCount || visited[next])
+            if (next < 0 || next >= cityCount)
                 continue;
 
+            // Edge relaxation step
             double newDistance =
                 distance[current] + edge->travelTime;
 
@@ -87,6 +85,8 @@ RouteResult CityGraph::dijkstra(
             {
                 distance[next] = newDistance;
                 previous[next] = current;
+
+                pq.push(newDistance, next);
             }
         }
     }

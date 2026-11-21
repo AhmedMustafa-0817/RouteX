@@ -30,7 +30,8 @@ public:
         int shipmentID,
         string eventType,
         string location,
-        string status
+        string status,
+        bool startNewBlock = false
     );
 
     bool createShipment(Shipment shipment);

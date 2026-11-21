@@ -41,52 +41,61 @@ void MinHeap::grow()
     heap = biggerHeap;
 }
 
-void MinHeap::siftUp(int index)
+void MinHeap::swapNodes(int first, int second)
 {
-    while (index > 0)
-    {
-        int parent = (index - 1) / 2;
-
-        if (!hasHigherPriority(heap[index], heap[parent]))
-            break;
-
-        HeapNode temp = heap[index];
-        heap[index] = heap[parent];
-        heap[parent] = temp;
-
-        index = parent;
-    }
+    HeapNode temp = heap[first];
+    heap[first] = heap[second];
+    heap[second] = temp;
 }
 
+// Recursive sift-up: move the node at index up until its parent
+// has higher priority (or it becomes the root).
+void MinHeap::siftUp(int index)
+{
+    // Base case: the root has no parent.
+    if (index == 0)
+        return;
+
+    int parent = (index - 1) / 2;
+
+    // Base case: heap order already holds.
+    if (!hasHigherPriority(heap[index], heap[parent]))
+        return;
+
+    swapNodes(index, parent);
+
+    // Recursive step: continue from the parent's position.
+    siftUp(parent);
+}
+
+// Recursive sift-down: move the node at index down until both
+// children have lower priority (or it becomes a leaf).
 void MinHeap::siftDown(int index)
 {
-    while (true)
+    int smallest = index;
+    int left = 2 * index + 1;
+    int right = 2 * index + 2;
+
+    if (left < heapSize &&
+        hasHigherPriority(heap[left], heap[smallest]))
     {
-        int smallest = index;
-        int left = 2 * index + 1;
-        int right = 2 * index + 2;
-
-        if (left < heapSize &&
-            hasHigherPriority(heap[left], heap[smallest]))
-        {
-            smallest = left;
-        }
-
-        if (right < heapSize &&
-            hasHigherPriority(heap[right], heap[smallest]))
-        {
-            smallest = right;
-        }
-
-        if (smallest == index)
-            break;
-
-        HeapNode temp = heap[index];
-        heap[index] = heap[smallest];
-        heap[smallest] = temp;
-
-        index = smallest;
+        smallest = left;
     }
+
+    if (right < heapSize &&
+        hasHigherPriority(heap[right], heap[smallest]))
+    {
+        smallest = right;
+    }
+
+    // Base case: neither child has higher priority.
+    if (smallest == index)
+        return;
+
+    swapNodes(index, smallest);
+
+    // Recursive step: continue from the child's position.
+    siftDown(smallest);
 }
 
 void MinHeap::push(double distance, int cityIndex)

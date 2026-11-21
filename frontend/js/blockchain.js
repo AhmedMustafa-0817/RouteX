@@ -646,14 +646,21 @@
     if (submitBtn) submitBtn.disabled = true;
 
     try {
-      await api('/api/blockchain/register', {
+      const result = await api('/api/blockchain/register', {
         method: 'POST',
         body: JSON.stringify({ shipmentID, eventType, location, status })
       });
 
       closeModal();
-      toast('Block Event Registered', `${eventType} event recorded for Shipment #${shipmentID}`, 'success');
+      const newBlockIndex = Number(result.blockIndex);
+      if (Number.isFinite(newBlockIndex)) expandedBlockSet.add(newBlockIndex);
       await loadBlockchainData(false);
+
+      const blockLabel = Number.isFinite(newBlockIndex) ? ` in Block #${newBlockIndex}` : '';
+      toast('Block Event Registered', `${eventType} event recorded for Shipment #${shipmentID}${blockLabel}`, 'success');
+
+      const newBlockCard = document.getElementById(`block-${newBlockIndex}`);
+      if (newBlockCard) newBlockCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } catch (error) {
       toast('Registration Failed', error.message, 'error');
     } finally {
