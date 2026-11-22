@@ -14,6 +14,7 @@ using SocketHandle = SOCKET;
 #include <arpa/inet.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <csignal>
 using SocketHandle = int;
 #define INVALID_SOCKET (-1)
 #define SOCKET_ERROR (-1)
@@ -27,8 +28,13 @@ using SocketHandle = int;
 #include "../include/RouteService.h"
 
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <sstream>
+#include <vector>
+#include <cctype>
+#include <climits>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
@@ -68,73 +74,266 @@ string jsonString(const string& value)
     return "\"" + jsonEscape(value) + "\"";
 }
 
-// Read a string value from a simple JSON request body.
-string getJsonString(const string& body, const string& key)
+bool isJsonSpace(char c)
 {
-    string search = "\"" + key + "\"";
-    size_t pos = body.find(search);
-
-    if (pos == string::npos)
-        return "";
-
-    pos = body.find(':', pos + search.size());
-
-    if (pos == string::npos)
-        return "";
-
-    pos = body.find('"', pos + 1);
-
-    if (pos == string::npos)
-        return "";
-
-    size_t end = body.find('"', pos + 1);
-
-    if (end == string::npos)
-        return "";
-
-    return body.substr(pos + 1, end - pos - 1);
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
-// Read a numeric value from a simple JSON request body.
+// Position of the value that follows "key": in a flat JSON object,
+// or string::npos. Only matches a quoted key that is followed by a colon,
+// so a string *value* that happens to equal the key is not mistaken for it.
+size_t findJsonValue(const string& body, const string& key)
+{
+    string search = "\"" + key + "\"";
+    size_t pos = 0;
+
+    while ((pos = body.find(search, pos)) != string::npos)
+    {
+        size_t after = pos + search.size();
+
+        while (after < body.size() && isJsonSpace(body[after]))
+            ++after;
+
+        if (after < body.size() && body[after] == ':')
+        {
+            ++after;
+            while (after < body.size() && isJsonSpace(body[after]))
+                ++after;
+            return after;
+        }
+
+        pos = after;
+    }
+
+    return string::npos;
+}
+
+void appendUtf8(string& out, unsigned int codePoint)
+{
+    if (codePoint < 0x80)
+    {
+        out += static_cast<char>(codePoint);
+    }
+    else if (codePoint < 0x800)
+    {
+        out += static_cast<char>(0xC0 | (codePoint >> 6));
+        out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    }
+    else if (codePoint < 0x10000)
+    {
+        out += static_cast<char>(0xE0 | (codePoint >> 12));
+        out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    }
+    else
+    {
+        out += static_cast<char>(0xF0 | (codePoint >> 18));
+        out += static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    }
+}
+
+bool readHex4(const string& s, size_t pos, unsigned int& value)
+{
+    if (pos + 4 > s.size())
+        return false;
+
+    value = 0;
+    for (size_t i = pos; i < pos + 4; ++i)
+    {
+        char c = s[i];
+        value <<= 4;
+        if (c >= '0' && c <= '9') value |= static_cast<unsigned int>(c - '0');
+        else if (c >= 'a' && c <= 'f') value |= static_cast<unsigned int>(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') value |= static_cast<unsigned int>(c - 'A' + 10);
+        else return false;
+    }
+    return true;
+}
+
+// Read a string value from a simple JSON request body, decoding escapes
+// (\" \\ \/ \b \f \n \r \t \uXXXX). Returns "" if missing or not a string.
+string getJsonString(const string& body, const string& key)
+{
+    size_t pos = findJsonValue(body, key);
+
+    if (pos == string::npos || pos >= body.size() || body[pos] != '"')
+        return "";
+
+    string result;
+
+    for (size_t i = pos + 1; i < body.size(); ++i)
+    {
+        char c = body[i];
+
+        if (c == '"')
+            return result;
+
+        if (c != '\\')
+        {
+            result += c;
+            continue;
+        }
+
+        if (++i >= body.size())
+            return "";
+
+        switch (body[i])
+        {
+        case '"':  result += '"';  break;
+        case '\\': result += '\\'; break;
+        case '/':  result += '/';  break;
+        case 'b':  result += '\b'; break;
+        case 'f':  result += '\f'; break;
+        case 'n':  result += '\n'; break;
+        case 'r':  result += '\r'; break;
+        case 't':  result += '\t'; break;
+        case 'u':
+        {
+            unsigned int code = 0;
+            if (!readHex4(body, i + 1, code))
+                return "";
+            i += 4;
+
+            // Combine a UTF-16 surrogate pair into one code point.
+            unsigned int low = 0;
+            if (code >= 0xD800 && code <= 0xDBFF &&
+                i + 2 < body.size() && body[i + 1] == '\\' && body[i + 2] == 'u' &&
+                readHex4(body, i + 3, low) && low >= 0xDC00 && low <= 0xDFFF)
+            {
+                code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+                i += 6;
+            }
+
+            appendUtf8(result, code);
+            break;
+        }
+        default:
+            return "";
+        }
+    }
+
+    return ""; // unterminated string
+}
+
+// Read a finite numeric value from a simple JSON request body.
 bool getJsonNumber(
     const string& body,
     const string& key,
     double& value)
 {
-    string search = "\"" + key + "\"";
-    size_t pos = body.find(search);
+    size_t pos = findJsonValue(body, key);
 
-    if (pos == string::npos)
+    if (pos == string::npos || pos >= body.size())
         return false;
 
-    pos = body.find(':', pos + search.size());
-
-    if (pos == string::npos)
+    // strtod also accepts "inf", "nan" and hex floats; JSON numbers
+    // always start with '-' or a digit.
+    char first = body[pos];
+    if (first != '-' && (first < '0' || first > '9'))
         return false;
-
-    ++pos;
-
-    while (pos < body.size() &&
-           (body[pos] == ' ' || body[pos] == '\t'))
-        ++pos;
 
     char* end = nullptr;
     value = strtod(body.c_str() + pos, &end);
 
-    return end != body.c_str() + pos;
+    return end != body.c_str() + pos && std::isfinite(value);
+}
+
+// Read a positive whole-number ID that fits in an int.
+bool getJsonPositiveInt(const string& body, const string& key, int& value)
+{
+    double number = 0;
+
+    if (!getJsonNumber(body, key, number) ||
+        number < 1 || number > INT_MAX || number != std::floor(number))
+        return false;
+
+    value = static_cast<int>(number);
+    return true;
+}
+
+const size_t MAX_TEXT_FIELD_LENGTH = 64;
+
+// Trim surrounding spaces and reject empty, overlong or control-character
+// text, so every stored value round-trips safely through CSV and JSON.
+bool cleanTextField(string& value)
+{
+    size_t start = value.find_first_not_of(" \t");
+    size_t end = value.find_last_not_of(" \t");
+
+    if (start == string::npos)
+    {
+        value.clear();
+        return false;
+    }
+
+    value = value.substr(start, end - start + 1);
+
+    if (value.size() > MAX_TEXT_FIELD_LENGTH)
+        return false;
+
+    for (char c : value)
+    {
+        unsigned char u = static_cast<unsigned char>(c);
+        if (u < 32 || u == 127)
+            return false;
+    }
+
+    return true;
+}
+
+// Cities in the sample route network (see setupRoutes).
+const char* const ROUTE_CITIES[] = {
+    "Karachi", "Hyderabad", "Sukkur", "Quetta",
+    "Multan", "Lahore", "Islamabad", "Peshawar"
+};
+
+bool equalsIgnoreCase(const string& a, const string& b)
+{
+    if (a.size() != b.size())
+        return false;
+
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    }
+
+    return true;
+}
+
+// Map user input such as " lahore " to the graph's spelling "Lahore".
+// Returns "" when the city is not part of the network.
+string canonicalCity(string name)
+{
+    if (!cleanTextField(name))
+        return "";
+
+    for (const char* city : ROUTE_CITIES)
+    {
+        if (equalsIgnoreCase(name, city))
+            return city;
+    }
+
+    return "";
 }
 
 // Build an HTTP response.
 string httpResponse(
     int status,
     const string& body,
-    const string& statusText = "OK")
+    const string& statusText = "OK",
+    const string& contentType = "application/json; charset=utf-8")
 {
     stringstream response;
 
     response << "HTTP/1.1 " << status << " "
              << statusText << "\r\n";
-    response << "Content-Type: application/json; charset=utf-8\r\n";
+    response << "Content-Type: " << contentType << "\r\n";
+    // Always revalidate, so browsers never run stale JS/CSS after a redeploy.
+    response << "Cache-Control: no-cache\r\n";
     response << "Access-Control-Allow-Origin: *\r\n";
     response << "Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE\r\n";
     response << "Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Access-Control-Request-Private-Network\r\n";
@@ -146,11 +345,130 @@ string httpResponse(
     return response.str();
 }
 
+// ---------------------------------------------------------------------------
+// Runtime configuration (set in main from arguments / environment variables).
+// ---------------------------------------------------------------------------
+
+// Shipment CSV. Override with ROUTEX_DATA_FILE.
+string g_dataFile = "data/shipments.csv";
+
+// Folder with the HTML/CSS/JS pages. Override with ROUTEX_FRONTEND_DIR.
+// When it contains index.html the server also hosts the website, so the
+// whole app runs from one URL (used for deployment).
+string g_frontendDir = "frontend";
+bool g_serveFrontend = false;
+
+bool fileExists(const string& path)
+{
+    std::ifstream file(path, std::ios::binary);
+    return file.good();
+}
+
+bool readWholeFile(const string& path, string& contents)
+{
+    std::ifstream file(path, std::ios::binary);
+
+    if (!file.is_open())
+        return false;
+
+    stringstream buffer;
+    buffer << file.rdbuf();
+
+    if (file.bad())
+        return false;
+
+    contents = buffer.str();
+    return true;
+}
+
+// Content type for the static file types the frontend uses; "" = not served.
+string staticContentType(const string& path)
+{
+    size_t dot = path.find_last_of('.');
+    size_t slash = path.find_last_of('/');
+
+    if (dot == string::npos || (slash != string::npos && dot < slash))
+        return "";
+
+    string ext = path.substr(dot + 1);
+    for (char& c : ext)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+    if (ext == "html") return "text/html; charset=utf-8";
+    if (ext == "css")  return "text/css; charset=utf-8";
+    if (ext == "js")   return "application/javascript; charset=utf-8";
+    if (ext == "json") return "application/json; charset=utf-8";
+    if (ext == "svg")  return "image/svg+xml";
+    if (ext == "png")  return "image/png";
+    if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+    if (ext == "gif")  return "image/gif";
+    if (ext == "ico")  return "image/x-icon";
+    if (ext == "webp") return "image/webp";
+    if (ext == "woff2") return "font/woff2";
+    if (ext == "woff") return "font/woff";
+    if (ext == "txt")  return "text/plain; charset=utf-8";
+    return "";
+}
+
+// Only plain relative paths inside the frontend folder: no "..", no
+// backslashes, no encoded characters, no hidden files.
+bool isSafeStaticPath(const string& path)
+{
+    if (path.size() < 2 || path[0] != '/')
+        return false;
+
+    if (path.find("..") != string::npos || path.find("/.") != string::npos)
+        return false;
+
+    for (char c : path)
+    {
+        unsigned char u = static_cast<unsigned char>(c);
+        if (!(std::isalnum(u) || c == '/' || c == '.' || c == '-' || c == '_'))
+            return false;
+    }
+
+    return true;
+}
+
+string serveStaticFile(const string& requestPath)
+{
+    // When the pages are served by this server, the API is on the same
+    // origin. This replaces frontend/js/config.js, whose default points at
+    // http://127.0.0.1:8090 for Live Server development.
+    if (requestPath == "/js/config.js")
+    {
+        return httpResponse(
+            200,
+            "// Generated by routex_api: the API is served from this same origin.\n"
+            "window.ROUTEX_API_BASE = window.location.origin;\n",
+            "OK",
+            "application/javascript; charset=utf-8");
+    }
+
+    string path = requestPath;
+    if (!path.empty() && path.back() == '/')
+        path += "index.html";
+
+    string contentType = staticContentType(path);
+    string contents;
+
+    if (!isSafeStaticPath(path) ||
+        contentType.empty() ||
+        !readWholeFile(g_frontendDir + path, contents))
+    {
+        return httpResponse(404, "Not found\n", "Not Found", "text/plain; charset=utf-8");
+    }
+
+    return httpResponse(200, contents, "OK", contentType);
+}
+
 bool sendAll(SocketHandle client, const string& data)
 {
-#ifndef _WIN32
-    // On macOS, writing to a disconnected client can otherwise raise SIGPIPE
-    // and terminate the whole API process. Keep the failure local to this request.
+    // Writing to a disconnected client can raise SIGPIPE and terminate the
+    // whole API process. Keep the failure local to this request:
+    // macOS uses the SO_NOSIGPIPE socket option, Linux the MSG_NOSIGNAL flag
+    // (main() also ignores SIGPIPE as a fallback on every POSIX system).
+#ifdef SO_NOSIGPIPE
     int suppressSigPipe = 1;
     setsockopt(
         client,
@@ -161,6 +479,12 @@ bool sendAll(SocketHandle client, const string& data)
     );
 #endif
 
+#ifdef MSG_NOSIGNAL
+    const int sendFlags = MSG_NOSIGNAL;
+#else
+    const int sendFlags = 0;
+#endif
+
     size_t sent = 0;
 
     while (sent < data.size())
@@ -169,7 +493,7 @@ bool sendAll(SocketHandle client, const string& data)
             client,
             data.c_str() + sent,
             static_cast<int>(data.size() - sent),
-            0
+            sendFlags
         );
 
         if (result <= 0)
@@ -192,7 +516,10 @@ string handleRequest(
     if (method == "OPTIONS")
         return httpResponse(200, "{\"ok\":true}");
 
-    if (method == "GET" && path == "/")
+    // Health check (used by the frontend and by the hosting platform).
+    // "/" also answers with it when the server is not hosting the website.
+    if (method == "GET" &&
+        (path == "/api/health" || (path == "/" && !g_serveFrontend)))
     {
         return httpResponse(
             200,
@@ -200,11 +527,18 @@ string handleRequest(
         );
     }
 
+    // Website pages, styles and scripts.
+    bool isApiPath = path == "/api" || path.compare(0, 5, "/api/") == 0;
+    if (g_serveFrontend && !isApiPath && method == "GET")
+        return serveStaticFile(path);
+
     // GET /api/shipments
     if (method == "GET" && path == "/api/shipments")
     {
-        Shipment shipments[500];
-        int count = manager.getAllShipments(shipments, 500);
+        std::vector<Shipment> shipments(manager.getShipmentCount());
+        int count = manager.getAllShipments(
+            shipments.data(),
+            static_cast<int>(shipments.size()));
 
         stringstream json;
         json << "{\"shipments\":[";
@@ -237,15 +571,15 @@ string handleRequest(
     // POST /api/shipments
     if (method == "POST" && path == "/api/shipments")
     {
-        double idValue = 0;
+        int shipmentID = 0;
         double weight = 0;
 
-        if (!getJsonNumber(body, "shipmentID", idValue) ||
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID) ||
             !getJsonNumber(body, "weight", weight))
         {
             return httpResponse(
                 400,
-                "{\"error\":\"shipmentID and weight are required\"}",
+                "{\"error\":\"A positive whole-number shipmentID and a numeric weight are required\"}",
                 "Bad Request"
             );
         }
@@ -255,25 +589,25 @@ string handleRequest(
         string packageType = getJsonString(body, "packageType");
         string status = getJsonString(body, "status");
 
-        if (source.empty() ||
-            destination.empty() ||
-            packageType.empty() ||
-            idValue <= 0 ||
-            idValue != static_cast<int>(idValue) ||
-            weight <= 0)
+        if (!cleanTextField(source) ||
+            !cleanTextField(destination) ||
+            !cleanTextField(packageType) ||
+            weight <= 0 || weight > 100000)
         {
             return httpResponse(
                 400,
-                "{\"error\":\"Invalid shipment fields\"}",
+                "{\"error\":\"Invalid shipment fields: text must be 1-64 characters without line breaks, weight must be between 0 and 100000\"}",
                 "Bad Request"
             );
         }
 
         if (status.empty())
             status = "Pending";
+        else if (!cleanTextField(status))
+            return httpResponse(400, "{\"error\":\"Invalid status\"}", "Bad Request");
 
         Shipment shipment(
-            static_cast<int>(idValue),
+            shipmentID,
             source,
             destination,
             packageType,
@@ -290,7 +624,7 @@ string handleRequest(
             );
         }
 
-        if (!manager.saveAll("data/shipments.csv"))
+        if (!manager.saveAll(g_dataFile))
         {
             return httpResponse(
                 500,
@@ -310,10 +644,9 @@ string handleRequest(
     // Uses ShipmentManager::searchShipment(), which delegates to the custom Hash Table.
     if (method == "POST" && path == "/api/shipments/search")
     {
-        double idValue = 0;
+        int shipmentID = 0;
 
-        if (!getJsonNumber(body, "shipmentID", idValue) ||
-            idValue <= 0 || idValue != static_cast<int>(idValue))
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID))
         {
             return httpResponse(
                 400,
@@ -322,7 +655,7 @@ string handleRequest(
             );
         }
 
-        Shipment* shipment = manager.searchShipment(static_cast<int>(idValue));
+        Shipment* shipment = manager.searchShipment(shipmentID);
         if (shipment == nullptr)
         {
             return httpResponse(404, "{\"error\":\"Shipment not found\"}", "Not Found");
@@ -352,7 +685,7 @@ string handleRequest(
             );
         }
 
-        if (!manager.saveAll("data/shipments.csv"))
+        if (!manager.saveAll(g_dataFile))
         {
             return httpResponse(
                 500,
@@ -368,12 +701,11 @@ string handleRequest(
     // Body: { "shipmentID": 103, "location": "Hyderabad" }
     if (method == "POST" && path == "/api/shipments/arrival")
     {
-        double idValue = 0;
+        int shipmentID = 0;
         string location = getJsonString(body, "location");
 
-        if (!getJsonNumber(body, "shipmentID", idValue) ||
-            idValue <= 0 || idValue != static_cast<int>(idValue) ||
-            location.empty())
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID) ||
+            !cleanTextField(location))
         {
             return httpResponse(
                 400,
@@ -382,7 +714,7 @@ string handleRequest(
             );
         }
 
-        if (!manager.recordArrival(static_cast<int>(idValue), location))
+        if (!manager.recordArrival(shipmentID, location))
         {
             return httpResponse(
                 409,
@@ -391,7 +723,7 @@ string handleRequest(
             );
         }
 
-        if (!manager.saveAll("data/shipments.csv"))
+        if (!manager.saveAll(g_dataFile))
         {
             return httpResponse(
                 500,
@@ -406,15 +738,27 @@ string handleRequest(
     // POST /api/routes/fastest
     if (method == "POST" && path == "/api/routes/fastest")
     {
-        string source = getJsonString(body, "source");
-        string destination = getJsonString(body, "destination");
+        string rawSource = getJsonString(body, "source");
+        string rawDestination = getJsonString(body, "destination");
 
-        if (source.empty() || destination.empty())
+        if (rawSource.empty() || rawDestination.empty())
         {
             return httpResponse(
                 400,
                 "{\"error\":\"source and destination are required\"}",
                 "Bad Request"
+            );
+        }
+
+        string source = canonicalCity(rawSource);
+        string destination = canonicalCity(rawDestination);
+
+        if (source.empty() || destination.empty())
+        {
+            return httpResponse(
+                404,
+                "{\"error\":\"Unknown city. Valid cities: Karachi, Hyderabad, Sukkur, Quetta, Multan, Lahore, Islamabad, Peshawar\"}",
+                "Not Found"
             );
         }
 
@@ -540,13 +884,13 @@ string handleRequest(
     // POST /api/blockchain/register (or /api/blockchain/events)
     if (method == "POST" && (path == "/api/blockchain/register" || path == "/api/blockchain/events"))
     {
-        double idValue = 0;
-        getJsonNumber(body, "shipmentID", idValue);
+        int shipmentID = 0;
         string eventType = getJsonString(body, "eventType");
         string location = getJsonString(body, "location");
         string status = getJsonString(body, "status");
 
-        if (idValue <= 0 || eventType.empty())
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID) ||
+            !cleanTextField(eventType))
         {
             return httpResponse(
                 400,
@@ -555,14 +899,28 @@ string handleRequest(
             );
         }
 
+        if (manager.searchShipment(shipmentID) == nullptr)
+        {
+            return httpResponse(
+                404,
+                "{\"error\":\"Shipment not found; create it before registering events\"}",
+                "Not Found"
+            );
+        }
+
         if (location.empty())
             location = "Warehouse Hub";
+        else if (!cleanTextField(location))
+            return httpResponse(400, "{\"error\":\"Invalid location\"}", "Bad Request");
+
         if (status.empty())
             status = eventType;
+        else if (!cleanTextField(status))
+            return httpResponse(400, "{\"error\":\"Invalid status\"}", "Bad Request");
 
         // A manual registration always seals its own block, so the explorer
         // shows a new block for every "Record & Register Block" action.
-        if (!manager.recordEvent(static_cast<int>(idValue), eventType, location, status, true))
+        if (!manager.recordEvent(shipmentID, eventType, location, status, true))
         {
             return httpResponse(
                 500,
@@ -780,18 +1138,41 @@ void processClient(
 
 int main(int argc, char* argv[])
 {
+    // Port: command-line argument, else the PORT environment variable
+    // (set by hosting platforms such as Render), else 8090.
     int serverPort = 8090;
+    const char* portSource = nullptr;
+
     if (argc > 1)
+        portSource = argv[1];
+    else if (const char* envPort = std::getenv("PORT"))
+        portSource = envPort;
+
+    if (portSource != nullptr && *portSource != '\0')
     {
         char* end = nullptr;
-        long requestedPort = strtol(argv[1], &end, 10);
-        if (end == argv[1] || *end != '\0' || requestedPort < 1024 || requestedPort > 65535)
+        long requestedPort = strtol(portSource, &end, 10);
+        if (end == portSource || *end != '\0' || requestedPort < 1 || requestedPort > 65535)
         {
-            cerr << "Usage: routex_api [port (1024-65535)]\n";
+            cerr << "Usage: routex_api [port (1-65535)]  (or set the PORT environment variable)\n";
             return 1;
         }
         serverPort = static_cast<int>(requestedPort);
     }
+
+    if (const char* envData = std::getenv("ROUTEX_DATA_FILE"))
+        if (*envData != '\0')
+            g_dataFile = envData;
+
+    if (const char* envFrontend = std::getenv("ROUTEX_FRONTEND_DIR"))
+        if (*envFrontend != '\0')
+            g_frontendDir = envFrontend;
+
+    while (!g_frontendDir.empty() &&
+           (g_frontendDir.back() == '/' || g_frontendDir.back() == '\\'))
+        g_frontendDir.pop_back();
+
+    g_serveFrontend = fileExists(g_frontendDir + "/index.html");
 
 #ifdef _WIN32
     WSADATA wsaData;
@@ -800,6 +1181,8 @@ int main(int argc, char* argv[])
         cerr << "Winsock initialization failed.\n";
         return 1;
     }
+#else
+    std::signal(SIGPIPE, SIG_IGN);
 #endif
 
     SocketHandle serverSocket =
@@ -819,6 +1202,18 @@ int main(int argc, char* argv[])
     serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
 
     int reuseAddress = 1;
+#ifdef _WIN32
+    // On Windows SO_REUSEADDR would let a second server silently share the
+    // port; SO_EXCLUSIVEADDRUSE makes a duplicate start fail with a clear error.
+    setsockopt(
+        serverSocket,
+        SOL_SOCKET,
+        SO_EXCLUSIVEADDRUSE,
+        reinterpret_cast<const char*>(&reuseAddress),
+        sizeof(reuseAddress)
+    );
+#else
+    // On Linux/macOS it only allows a quick restart after the server stops.
     setsockopt(
         serverSocket,
         SOL_SOCKET,
@@ -826,6 +1221,7 @@ int main(int argc, char* argv[])
         reinterpret_cast<const char*>(&reuseAddress),
         sizeof(reuseAddress)
     );
+#endif
 
     if (::bind(
             serverSocket,
@@ -846,13 +1242,19 @@ int main(int argc, char* argv[])
     }
 
     ShipmentManager manager;
-    if (!manager.loadAll("data/shipments.csv"))
-        cout << "Warning: could not load data/shipments.csv; starting with an empty registry.\n";
+    if (!manager.loadAll(g_dataFile))
+        cout << "Warning: could not load " << g_dataFile << "; starting with an empty registry.\n";
 
     CityGraph graph;
     setupRoutes(graph);
 
-    cout << "RouteX API running at http://127.0.0.1:" << serverPort << std::endl;
+    cout << "RouteX API running at http://127.0.0.1:" << serverPort << "\n";
+    cout << "Data file: " << g_dataFile << "\n";
+    if (g_serveFrontend)
+        cout << "Website:   http://127.0.0.1:" << serverPort << "/  (serving " << g_frontendDir << "/)\n";
+    else
+        cout << "Website:   not served (no " << g_frontendDir << "/index.html found)\n";
+    cout << std::flush;
 
     std::mutex managerMutex;
 
