@@ -126,6 +126,20 @@ int HashTable::getAllShipments(
     return count;
 }
 
+// Number of stored shipments. O(n + buckets).
+int HashTable::size()
+{
+    int count = 0;
+
+    for (int i = 0; i < bucketCount; ++i)
+    {
+        for (HashNode* current = buckets[i]; current != nullptr; current = current->next)
+            ++count;
+    }
+
+    return count;
+}
+
 void HashTable::display()
 {
     for (int i = 0; i < bucketCount; ++i)
