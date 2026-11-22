@@ -6,6 +6,12 @@ ROUTEX is a C++-based logistics management system designed as a **Data Structure
 
 The system manages delivery orders, processes them using a queue, provides fast shipment lookup through hashing, represents transportation networks as weighted graphs, calculates the fastest city-to-city route using Dijkstra's algorithm with a min-heap, and maintains a tamper-evident shipment-event history using a blockchain implemented with linked blocks and SHA-256 hashing.
 
+### Live demo
+
+**https://jawwad0704-routex.static.hf.space**
+
+The C++ backend is compiled to WebAssembly and runs in your browser, so the demo works on desktop and mobile with no server. Each visitor starts from the demo shipments; anything you add is saved only in your own browser. Hosting page: [huggingface.co/spaces/jawwad0704/routex](https://huggingface.co/spaces/jawwad0704/routex). Build and update steps: [web/README.md](web/README.md).
+
 ---
 
 # 1. Project Purpose
@@ -317,69 +323,60 @@ The first order added is processed first.
 # 11. Project Folder Structure
 
 ```text
-routex-dsa/
+RouteX/
 │
 ├── backend/
-│   ├── include/
-│   │   ├── Order.h
-│   │   ├── Queue.h
-│   │   ├── HashTable.h
-│   │   ├── Graph.h
-│   │   ├── MinHeap.h
-│   │   ├── Dijkstra.h
-│   │   ├── Transaction.h
-│   │   ├── Block.h
-│   │   ├── Blockchain.h
-│   │   └── SHA256.h
+│   ├── include/                 # Declarations (.h)
+│   │   ├── Order.h  Shipment.h  ShipmentManager.h  Storage.h
+│   │   ├── Queue.h  HashTable.h
+│   │   ├── Graph.h  MinHeap.h  Dijkstra.h  RouteService.h
+│   │   └── Transaction.h  TransferEvent.h  Block.h  Blockchain.h  SHA256.h
 │   │
-│   ├── src/
-│   │   ├── main.cpp
-│   │   ├── Order.cpp
-│   │   ├── Queue.cpp
-│   │   ├── HashTable.cpp
-│   │   ├── Graph.cpp
-│   │   ├── MinHeap.cpp
-│   │   ├── Dijkstra.cpp
-│   │   ├── Transaction.cpp
-│   │   ├── Block.cpp
-│   │   ├── Blockchain.cpp
-│   │   └── SHA256.cpp
+│   ├── src/                     # Implementations (.cpp)
+│   │   ├── main.cpp             # Command-line demo (routex)
+│   │   ├── Order.cpp  Shipment.cpp  ShipmentManager.cpp  Storage.cpp
+│   │   ├── Queue.cpp  HashTable.cpp
+│   │   ├── Graph.cpp  MinHeap.cpp  Dijkstra.cpp
+│   │   └── Transaction.cpp  TransferEvent.cpp  Block.cpp  Blockchain.cpp  SHA256.cpp
 │   │
 │   └── server/
-│       └── Server.cpp
+│       └── Server.cpp           # HTTP API + website (routex_api); WebAssembly entry points
 │
-├── frontend/
-│   ├── index.html
-│   ├── css/
-│   │   └── style.css
+├── frontend/                    # Website: index, orders, route, blockchain pages
+│   ├── index.html  orders.html  route.html  blockchain.html
+│   ├── css/style.css
 │   └── js/
-│       ├── app.js
-│       ├── orders.js
-│       ├── routes.js
-│       └── blockchain.js
+│       ├── config.js            # Where the pages find the API
+│       ├── app.js               # Shared helpers + api()
+│       └── orders.js  routes.js  blockchain.js
+│
+├── web/                         # Static build: C++ compiled to WebAssembly (live demo)
+│   ├── build.sh                 # Builds web/dist/ (not committed)
+│   ├── engine.js                # Runs the WebAssembly backend in the page
+│   ├── space-README.md          # Hugging Face static Space settings
+│   └── README.md
+│
+├── deploy/huggingface/          # Docker Space files (paid Hugging Face option)
 │
 ├── data/
+│   ├── shipments.csv            # Demo shipments loaded at start-up
 │   ├── orders.csv
 │   └── routes.csv
 │
-├── tests/
-│   ├── test_queue.cpp
-│   ├── test_hash_table.cpp
-│   ├── test_graph.cpp
-│   ├── test_dijkstra.cpp
-│   └── test_blockchain.cpp
+├── tests/                       # All registered with CTest
+│   ├── test_queue.cpp  test_hash_table.cpp  test_storage.cpp
+│   ├── test_graph.cpp  test_minheap.cpp  test_dijkstra.cpp
+│   └── test_SHA256.cpp  test_transfer_event.cpp  test_block.cpp  test_blockchain.cpp
 │
 ├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── COMPLEXITY_ANALYSIS.md
-│   └── TEAM_WORKFLOW.md
+│   ├── API.md  ARCHITECTURE.md  COMPLEXITY_ANALYSIS.md  TEAM_WORKFLOW.md
 │
-├── .github/
-│   └── pull_request_template.md
-│
-├── .gitignore
+├── .github/pull_request_template.md
 ├── CMakeLists.txt
+├── Dockerfile  .dockerignore    # Container image (API + website)
+├── .gitignore  .gitattributes
 ├── CONTRIBUTING.md
+├── RouteX.code-workspace
 └── README.md
 ```
 
@@ -501,7 +498,7 @@ Environment variables (all optional):
 
 ### Free, no card: static website with C++ in the browser
 
-The recommended free deployment compiles the C++ backend to WebAssembly so the whole app runs in the visitor's browser and can be hosted as a static site (Hugging Face static Space, Vercel, Netlify). See **[web/README.md](web/README.md)** for the build and upload steps.
+The recommended free deployment compiles the C++ backend to WebAssembly so the whole app runs in the visitor's browser and can be hosted as a static site (Hugging Face static Space, Vercel, Netlify). It is live at **https://jawwad0704-routex.static.hf.space**. See **[web/README.md](web/README.md)** for the build and upload steps.
 
 ### Docker hosting (paid Hugging Face Docker Space or any Docker host)
 
