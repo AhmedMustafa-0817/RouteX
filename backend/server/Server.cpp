@@ -462,6 +462,7 @@ string serveStaticFile(const string& requestPath)
     return httpResponse(200, contents, "OK", contentType);
 }
 
+#ifndef __EMSCRIPTEN__ // socket I/O is not used in the WebAssembly build
 bool sendAll(SocketHandle client, const string& data)
 {
     // Writing to a disconnected client can raise SIGPIPE and terminate the
@@ -504,6 +505,7 @@ bool sendAll(SocketHandle client, const string& data)
 
     return true;
 }
+#endif // __EMSCRIPTEN__
 
 // API endpoints.
 string handleRequest(
@@ -978,6 +980,62 @@ void setupRoutes(CityGraph& graph)
 }
 
 
+#ifdef __EMSCRIPTEN__
+// ---------------------------------------------------------------------------
+// WebAssembly build: the same handleRequest() runs inside the browser.
+// web/engine.js calls routex_request() instead of sending HTTP requests,
+// so the static website works without any server. See web/README.md.
+// ---------------------------------------------------------------------------
+#include <emscripten/emscripten.h>
+
+namespace
+{
+    ShipmentManager* g_wasmManager = nullptr;
+    CityGraph* g_wasmGraph = nullptr;
+    string g_wasmResponse;
+}
+
+extern "C"
+{
+    // Load the shipment CSV (from the virtual file system) and build the
+    // route graph. Returns 1 if the CSV was loaded.
+    EMSCRIPTEN_KEEPALIVE int routex_init()
+    {
+        if (g_wasmManager != nullptr)
+            return 1;
+
+        g_dataFile = "/data/shipments.csv";
+        g_serveFrontend = false;
+
+        g_wasmManager = new ShipmentManager();
+        g_wasmGraph = new CityGraph();
+        setupRoutes(*g_wasmGraph);
+
+        return g_wasmManager->loadAll(g_dataFile) ? 1 : 0;
+    }
+
+    // Handle one API request; returns the full HTTP response text.
+    // The returned pointer stays valid until the next call.
+    EMSCRIPTEN_KEEPALIVE const char* routex_request(
+        const char* method,
+        const char* path,
+        const char* body)
+    {
+        routex_init();
+
+        g_wasmResponse = handleRequest(
+            method != nullptr ? method : "",
+            path != nullptr ? path : "",
+            body != nullptr ? body : "",
+            *g_wasmManager,
+            *g_wasmGraph);
+
+        return g_wasmResponse.c_str();
+    }
+}
+
+#else // native HTTP server
+
 void processClient(
     SocketHandle clientSocket,
     ShipmentManager& manager,
@@ -1280,3 +1338,5 @@ int main(int argc, char* argv[])
     WSACleanup();
     return 0;
 }
+
+#endif // __EMSCRIPTEN__
