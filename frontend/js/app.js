@@ -4,23 +4,40 @@
   // Keep the browser layer thin: all shipment/DSA operations stay in the C++ API.
   const API_BASE = (window.ROUTEX_API_BASE || 'http://127.0.0.1:8090').replace(/\/$/, '');
 
+  // Two transports, same C++ request handler:
+  // - the routex_api HTTP server (local development, Docker hosting);
+  // - window.RouteXEngine, the same C++ compiled to WebAssembly running in
+  //   this page (static hosting; see web/README.md).
   async function api(path, options = {}) {
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      headers: {
-        ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-        ...(options.headers || {})
-      }
-    });
+    const method = (options.method || 'GET').toUpperCase();
+    let status;
+    let contentType;
+    let text;
 
-    const contentType = response.headers.get('content-type') || '';
-    const payload = contentType.includes('application/json')
-      ? await response.json()
-      : { message: await response.text() };
+    if (window.RouteXEngine) {
+      ({ status, contentType, body: text } =
+        await window.RouteXEngine.request(method, path, options.body || ''));
+    } else {
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers: {
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.headers || {})
+        }
+      });
+      status = response.status;
+      contentType = response.headers.get('content-type') || '';
+      text = await response.text();
+    }
 
-    if (!response.ok) {
-      const error = new Error(payload.error || payload.message || `Request failed (${response.status})`);
-      error.status = response.status;
+    let payload = { message: text };
+    if (contentType.includes('application/json')) {
+      try { payload = JSON.parse(text); } catch (_) { /* keep text */ }
+    }
+
+    if (status < 200 || status >= 300) {
+      const error = new Error(payload.error || payload.message || `Request failed (${status})`);
+      error.status = status;
       error.payload = payload;
       throw error;
     }
@@ -63,6 +80,7 @@
   }
 
   function apiHostLabel() {
+    if (window.RouteXEngine) return 'C++ in browser (WebAssembly)';
     try {
       return new URL(API_BASE, window.location.href).host || 'API';
     } catch (_) {
