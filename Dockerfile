@@ -1,4 +1,5 @@
-# RouteX: C++ API + website in one container (used for Render deployment).
+# RouteX: C++ API + website in one container, built from this checkout.
+# (For Hugging Face Spaces use deploy/huggingface/Dockerfile instead.)
 #
 #   docker build -t routex .
 #   docker run -p 8090:8090 routex      ->  http://127.0.0.1:8090
@@ -24,7 +25,8 @@ RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
 # ---- Runtime stage --------------------------------------------------------
 FROM debian:bookworm-slim
 
-RUN useradd --system --create-home --uid 10001 routex
+# UID 1000 matches what Hugging Face Spaces expects; harmless elsewhere.
+RUN useradd --create-home --uid 1000 routex
 
 WORKDIR /app
 COPY --from=build /src/build/routex_api ./routex_api
