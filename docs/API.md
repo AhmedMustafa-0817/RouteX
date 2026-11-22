@@ -4,6 +4,13 @@ Base URL: `http://127.0.0.1:8090`
 
 The API is a lightweight C++ HTTP server. The browser UI sends requests here; shipment registry, queue, and blockchain operations remain in the C++ backend.
 
+## Input rules (all endpoints)
+
+- IDs (`shipmentID`) must be JSON numbers that are whole, positive and fit in a 32-bit int. Strings such as `"105"`, fractions, `NaN` or infinity return `400`.
+- Text fields (`sourceCity`, `destinationCity`, `packageType`, `status`, `location`, `eventType`) are trimmed and must be 1–64 characters without line breaks or other control characters. Commas, quotes and Unicode are allowed (standard JSON escapes such as `\"` and `é` are decoded).
+- `weight` must be a finite number greater than 0 and at most 100000.
+- Errors always come back as `{"error":"..."}` with a 4xx/5xx status.
+
 ## Shipment operations
 
 ### `GET /api/shipments`
@@ -57,7 +64,7 @@ Request body:
 {"source":"Karachi","destination":"Lahore"}
 ```
 
-Returns `found`, a city `path`, and `totalHours` from the graph/Dijkstra implementation. Returns `404` if no route is found.
+Returns `found`, a city `path`, and `totalHours` from the graph/Dijkstra implementation. City names are matched case-insensitively (`"lahore"` works). Returns `404` for a city outside the network (Karachi, Hyderabad, Sukkur, Quetta, Multan, Lahore, Islamabad, Peshawar) or if no route is found.
 
 ## Blockchain operations
 
@@ -103,7 +110,7 @@ Runs `verifyChain()` across the entire linked list, recalculating SHA-256 hashes
 Returns `{"valid": true, "error": "", "isTampered": false}` or `{"valid": false, "error": "...", "isTampered": true}`.
 
 ### `POST /api/blockchain/register`
-Records a new transfer event directly into the blockchain from the frontend explorer. Each registration always seals its own new block. Automatic lifecycle events (shipment created, dispatched or arrived) still batch up to 2 events per block.
+Records a new transfer event directly into the blockchain from the frontend explorer. The shipment must already exist (`404` otherwise). Each registration always seals its own new block. Automatic lifecycle events (shipment created, dispatched or arrived) still batch up to 2 events per block.
 
 Example response (`201 Created`):
 ```json
@@ -128,6 +135,10 @@ Restores the original blockchain event state so verification passes again.
 
 ## Running
 
-Build the project with CMake, then start `routex_api` from the repository root so the relative path `data/shipments.csv` resolves correctly. On macOS or Linux, run `./build/routex_api`; on Windows, run `build\\Debug\\routex_api.exe` for a Visual Studio generator or `build\\routex_api.exe` for a single-configuration generator. The API listens on `http://127.0.0.1:8090` by default. To specify a custom port, pass it as an argument (for example, `./build/routex_api 8091` on macOS/Linux). Serve the `frontend/` directory with a local static server (for example, VS Code Live Server) and open `index.html`, `orders.html`, `route.html`, or `blockchain.html`.
+Build the project with CMake, then start `routex_api` from the repository root so the relative path `data/shipments.csv` resolves correctly. On macOS or Linux, run `./build/routex_api`; on Windows, run `build\\Debug\\routex_api.exe` for a Visual Studio generator or `build\\routex_api.exe` for a single-configuration generator. The API listens on `http://127.0.0.1:8090` by default. To specify a custom port, pass it as an argument (for example, `./build/routex_api 8091` on macOS/Linux). The server also hosts the website from `frontend/`, so opening `http://127.0.0.1:8090/` shows the app. A local static server such as VS Code Live Server still works as well. `GET /api/health` returns `{"name":"RouteX API","status":"running"}` and is used as the hosting health check. `PORT`, `ROUTEX_DATA_FILE` and `ROUTEX_FRONTEND_DIR` environment variables override the defaults (see README).
 
-The current CSV format is intentionally simple: fields must not contain commas or line breaks. The blockchain is maintained in memory during runtime with verified SHA-256 block linking.
+`data/shipments.csv` uses standard CSV quoting, so fields containing commas or quotes are stored safely. Each save writes a temporary file and then replaces the original in one step, so a crash mid-save cannot truncate the data. There is no limit on the number of shipments.
+
+The blockchain is kept in memory during runtime with verified SHA-256 block linking. It is **not** persisted: on restart it is rebuilt with one `CREATED` event per shipment in the CSV, so earlier DISPATCHED/ARRIVED/registered events and their original timestamps are not kept.
+
+Run the unit tests with `ctest --test-dir build --output-on-failure`.
