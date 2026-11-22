@@ -6,6 +6,7 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 ShipmentManager::ShipmentManager()
     : registry(101), nextTransactionID(1), tampered(false),
@@ -143,37 +144,23 @@ bool ShipmentManager::recordArrival(
 
 bool ShipmentManager::saveAll(const string& filename)
 {
-    Shipment shipments[500];
-    int count = registry.getAllShipments(shipments, 500);
+    vector<Shipment> shipments(registry.size());
+    int count = registry.getAllShipments(
+        shipments.data(),
+        static_cast<int>(shipments.size()));
+    shipments.resize(count);
 
-    ofstream file(filename);
-
-    if (!file.is_open())
-        return false;
-
-    file << "shipmentID,sourceCity,destinationCity,"
-         << "packageType,weight,status\n";
-
-    file.close();
-
-    for (int i = 0; i < count; ++i)
-    {
-        if (!Storage::saveShipment(filename, shipments[i]))
-            return false;
-    }
-
-    return true;
+    return Storage::saveShipments(filename, shipments);
 }
 
 bool ShipmentManager::loadAll(const string& filename)
 {
-    Shipment shipments[500];
-    int count = 0;
+    vector<Shipment> shipments;
 
-    if (!Storage::loadShipments(filename, shipments, 500, count))
+    if (!Storage::loadShipments(filename, shipments))
         return false;
 
-    for (int i = 0; i < count; ++i)
+    for (size_t i = 0; i < shipments.size(); ++i)
     {
         int id = shipments[i].getShipmentID();
 
@@ -218,6 +205,11 @@ int ShipmentManager::getAllShipments(
     int capacity)
 {
     return registry.getAllShipments(shipments, capacity);
+}
+
+int ShipmentManager::getShipmentCount()
+{
+    return registry.size();
 }
 
 bool ShipmentManager::verifyBlockchain()

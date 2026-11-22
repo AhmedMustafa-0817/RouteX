@@ -46,6 +46,7 @@ public:
     void displayBlockchain();
 
     int getAllShipments(Shipment shipments[], int capacity);
+    int getShipmentCount();
     bool verifyBlockchain();
     string getBlockchainVerificationError();
     int getBlockchainBlockCount();

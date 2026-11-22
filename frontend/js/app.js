@@ -62,6 +62,14 @@
     window.setTimeout(() => item.remove(), 4800);
   }
 
+  function apiHostLabel() {
+    try {
+      return new URL(API_BASE, window.location.href).host || 'API';
+    } catch (_) {
+      return 'API';
+    }
+  }
+
   function setApiState(online, message) {
     const pill = document.getElementById('apiPill');
     const pillText = document.getElementById('apiPillText');
@@ -72,7 +80,7 @@
       pill.classList.toggle('is-offline', !online);
     }
     if (pillText) pillText.textContent = online ? 'API connected' : 'API offline';
-    if (sidebarText) sidebarText.textContent = online ? 'Connected · localhost:8090' : 'Start the C++ API server';
+    if (sidebarText) sidebarText.textContent = online ? `Connected · ${apiHostLabel()}` : 'Start the C++ API server';
     if (footerText) footerText.textContent = online ? 'C++ API connected' : 'C++ API unavailable';
     const statusDot = document.querySelector('.sidebar-system-card .system-orb > span');
     if (statusDot) {

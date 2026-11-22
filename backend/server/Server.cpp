@@ -29,6 +29,10 @@ using SocketHandle = int;
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <vector>
+#include <cctype>
+#include <climits>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
@@ -68,60 +72,250 @@ string jsonString(const string& value)
     return "\"" + jsonEscape(value) + "\"";
 }
 
-// Read a string value from a simple JSON request body.
-string getJsonString(const string& body, const string& key)
+bool isJsonSpace(char c)
 {
-    string search = "\"" + key + "\"";
-    size_t pos = body.find(search);
-
-    if (pos == string::npos)
-        return "";
-
-    pos = body.find(':', pos + search.size());
-
-    if (pos == string::npos)
-        return "";
-
-    pos = body.find('"', pos + 1);
-
-    if (pos == string::npos)
-        return "";
-
-    size_t end = body.find('"', pos + 1);
-
-    if (end == string::npos)
-        return "";
-
-    return body.substr(pos + 1, end - pos - 1);
+    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
-// Read a numeric value from a simple JSON request body.
+// Position of the value that follows "key": in a flat JSON object,
+// or string::npos. Only matches a quoted key that is followed by a colon,
+// so a string *value* that happens to equal the key is not mistaken for it.
+size_t findJsonValue(const string& body, const string& key)
+{
+    string search = "\"" + key + "\"";
+    size_t pos = 0;
+
+    while ((pos = body.find(search, pos)) != string::npos)
+    {
+        size_t after = pos + search.size();
+
+        while (after < body.size() && isJsonSpace(body[after]))
+            ++after;
+
+        if (after < body.size() && body[after] == ':')
+        {
+            ++after;
+            while (after < body.size() && isJsonSpace(body[after]))
+                ++after;
+            return after;
+        }
+
+        pos = after;
+    }
+
+    return string::npos;
+}
+
+void appendUtf8(string& out, unsigned int codePoint)
+{
+    if (codePoint < 0x80)
+    {
+        out += static_cast<char>(codePoint);
+    }
+    else if (codePoint < 0x800)
+    {
+        out += static_cast<char>(0xC0 | (codePoint >> 6));
+        out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    }
+    else if (codePoint < 0x10000)
+    {
+        out += static_cast<char>(0xE0 | (codePoint >> 12));
+        out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    }
+    else
+    {
+        out += static_cast<char>(0xF0 | (codePoint >> 18));
+        out += static_cast<char>(0x80 | ((codePoint >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((codePoint >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (codePoint & 0x3F));
+    }
+}
+
+bool readHex4(const string& s, size_t pos, unsigned int& value)
+{
+    if (pos + 4 > s.size())
+        return false;
+
+    value = 0;
+    for (size_t i = pos; i < pos + 4; ++i)
+    {
+        char c = s[i];
+        value <<= 4;
+        if (c >= '0' && c <= '9') value |= static_cast<unsigned int>(c - '0');
+        else if (c >= 'a' && c <= 'f') value |= static_cast<unsigned int>(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F') value |= static_cast<unsigned int>(c - 'A' + 10);
+        else return false;
+    }
+    return true;
+}
+
+// Read a string value from a simple JSON request body, decoding escapes
+// (\" \\ \/ \b \f \n \r \t \uXXXX). Returns "" if missing or not a string.
+string getJsonString(const string& body, const string& key)
+{
+    size_t pos = findJsonValue(body, key);
+
+    if (pos == string::npos || pos >= body.size() || body[pos] != '"')
+        return "";
+
+    string result;
+
+    for (size_t i = pos + 1; i < body.size(); ++i)
+    {
+        char c = body[i];
+
+        if (c == '"')
+            return result;
+
+        if (c != '\\')
+        {
+            result += c;
+            continue;
+        }
+
+        if (++i >= body.size())
+            return "";
+
+        switch (body[i])
+        {
+        case '"':  result += '"';  break;
+        case '\\': result += '\\'; break;
+        case '/':  result += '/';  break;
+        case 'b':  result += '\b'; break;
+        case 'f':  result += '\f'; break;
+        case 'n':  result += '\n'; break;
+        case 'r':  result += '\r'; break;
+        case 't':  result += '\t'; break;
+        case 'u':
+        {
+            unsigned int code = 0;
+            if (!readHex4(body, i + 1, code))
+                return "";
+            i += 4;
+
+            // Combine a UTF-16 surrogate pair into one code point.
+            unsigned int low = 0;
+            if (code >= 0xD800 && code <= 0xDBFF &&
+                i + 2 < body.size() && body[i + 1] == '\\' && body[i + 2] == 'u' &&
+                readHex4(body, i + 3, low) && low >= 0xDC00 && low <= 0xDFFF)
+            {
+                code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00);
+                i += 6;
+            }
+
+            appendUtf8(result, code);
+            break;
+        }
+        default:
+            return "";
+        }
+    }
+
+    return ""; // unterminated string
+}
+
+// Read a finite numeric value from a simple JSON request body.
 bool getJsonNumber(
     const string& body,
     const string& key,
     double& value)
 {
-    string search = "\"" + key + "\"";
-    size_t pos = body.find(search);
+    size_t pos = findJsonValue(body, key);
 
-    if (pos == string::npos)
+    if (pos == string::npos || pos >= body.size())
         return false;
 
-    pos = body.find(':', pos + search.size());
-
-    if (pos == string::npos)
+    // strtod also accepts "inf", "nan" and hex floats; JSON numbers
+    // always start with '-' or a digit.
+    char first = body[pos];
+    if (first != '-' && (first < '0' || first > '9'))
         return false;
-
-    ++pos;
-
-    while (pos < body.size() &&
-           (body[pos] == ' ' || body[pos] == '\t'))
-        ++pos;
 
     char* end = nullptr;
     value = strtod(body.c_str() + pos, &end);
 
-    return end != body.c_str() + pos;
+    return end != body.c_str() + pos && std::isfinite(value);
+}
+
+// Read a positive whole-number ID that fits in an int.
+bool getJsonPositiveInt(const string& body, const string& key, int& value)
+{
+    double number = 0;
+
+    if (!getJsonNumber(body, key, number) ||
+        number < 1 || number > INT_MAX || number != std::floor(number))
+        return false;
+
+    value = static_cast<int>(number);
+    return true;
+}
+
+const size_t MAX_TEXT_FIELD_LENGTH = 64;
+
+// Trim surrounding spaces and reject empty, overlong or control-character
+// text, so every stored value round-trips safely through CSV and JSON.
+bool cleanTextField(string& value)
+{
+    size_t start = value.find_first_not_of(" \t");
+    size_t end = value.find_last_not_of(" \t");
+
+    if (start == string::npos)
+    {
+        value.clear();
+        return false;
+    }
+
+    value = value.substr(start, end - start + 1);
+
+    if (value.size() > MAX_TEXT_FIELD_LENGTH)
+        return false;
+
+    for (char c : value)
+    {
+        unsigned char u = static_cast<unsigned char>(c);
+        if (u < 32 || u == 127)
+            return false;
+    }
+
+    return true;
+}
+
+// Cities in the sample route network (see setupRoutes).
+const char* const ROUTE_CITIES[] = {
+    "Karachi", "Hyderabad", "Sukkur", "Quetta",
+    "Multan", "Lahore", "Islamabad", "Peshawar"
+};
+
+bool equalsIgnoreCase(const string& a, const string& b)
+{
+    if (a.size() != b.size())
+        return false;
+
+    for (size_t i = 0; i < a.size(); ++i)
+    {
+        if (std::tolower(static_cast<unsigned char>(a[i])) !=
+            std::tolower(static_cast<unsigned char>(b[i])))
+            return false;
+    }
+
+    return true;
+}
+
+// Map user input such as " lahore " to the graph's spelling "Lahore".
+// Returns "" when the city is not part of the network.
+string canonicalCity(string name)
+{
+    if (!cleanTextField(name))
+        return "";
+
+    for (const char* city : ROUTE_CITIES)
+    {
+        if (equalsIgnoreCase(name, city))
+            return city;
+    }
+
+    return "";
 }
 
 // Build an HTTP response.
@@ -203,8 +397,10 @@ string handleRequest(
     // GET /api/shipments
     if (method == "GET" && path == "/api/shipments")
     {
-        Shipment shipments[500];
-        int count = manager.getAllShipments(shipments, 500);
+        std::vector<Shipment> shipments(manager.getShipmentCount());
+        int count = manager.getAllShipments(
+            shipments.data(),
+            static_cast<int>(shipments.size()));
 
         stringstream json;
         json << "{\"shipments\":[";
@@ -237,15 +433,15 @@ string handleRequest(
     // POST /api/shipments
     if (method == "POST" && path == "/api/shipments")
     {
-        double idValue = 0;
+        int shipmentID = 0;
         double weight = 0;
 
-        if (!getJsonNumber(body, "shipmentID", idValue) ||
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID) ||
             !getJsonNumber(body, "weight", weight))
         {
             return httpResponse(
                 400,
-                "{\"error\":\"shipmentID and weight are required\"}",
+                "{\"error\":\"A positive whole-number shipmentID and a numeric weight are required\"}",
                 "Bad Request"
             );
         }
@@ -255,25 +451,25 @@ string handleRequest(
         string packageType = getJsonString(body, "packageType");
         string status = getJsonString(body, "status");
 
-        if (source.empty() ||
-            destination.empty() ||
-            packageType.empty() ||
-            idValue <= 0 ||
-            idValue != static_cast<int>(idValue) ||
-            weight <= 0)
+        if (!cleanTextField(source) ||
+            !cleanTextField(destination) ||
+            !cleanTextField(packageType) ||
+            weight <= 0 || weight > 100000)
         {
             return httpResponse(
                 400,
-                "{\"error\":\"Invalid shipment fields\"}",
+                "{\"error\":\"Invalid shipment fields: text must be 1-64 characters without line breaks, weight must be between 0 and 100000\"}",
                 "Bad Request"
             );
         }
 
         if (status.empty())
             status = "Pending";
+        else if (!cleanTextField(status))
+            return httpResponse(400, "{\"error\":\"Invalid status\"}", "Bad Request");
 
         Shipment shipment(
-            static_cast<int>(idValue),
+            shipmentID,
             source,
             destination,
             packageType,
@@ -310,10 +506,9 @@ string handleRequest(
     // Uses ShipmentManager::searchShipment(), which delegates to the custom Hash Table.
     if (method == "POST" && path == "/api/shipments/search")
     {
-        double idValue = 0;
+        int shipmentID = 0;
 
-        if (!getJsonNumber(body, "shipmentID", idValue) ||
-            idValue <= 0 || idValue != static_cast<int>(idValue))
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID))
         {
             return httpResponse(
                 400,
@@ -322,7 +517,7 @@ string handleRequest(
             );
         }
 
-        Shipment* shipment = manager.searchShipment(static_cast<int>(idValue));
+        Shipment* shipment = manager.searchShipment(shipmentID);
         if (shipment == nullptr)
         {
             return httpResponse(404, "{\"error\":\"Shipment not found\"}", "Not Found");
@@ -368,12 +563,11 @@ string handleRequest(
     // Body: { "shipmentID": 103, "location": "Hyderabad" }
     if (method == "POST" && path == "/api/shipments/arrival")
     {
-        double idValue = 0;
+        int shipmentID = 0;
         string location = getJsonString(body, "location");
 
-        if (!getJsonNumber(body, "shipmentID", idValue) ||
-            idValue <= 0 || idValue != static_cast<int>(idValue) ||
-            location.empty())
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID) ||
+            !cleanTextField(location))
         {
             return httpResponse(
                 400,
@@ -382,7 +576,7 @@ string handleRequest(
             );
         }
 
-        if (!manager.recordArrival(static_cast<int>(idValue), location))
+        if (!manager.recordArrival(shipmentID, location))
         {
             return httpResponse(
                 409,
@@ -406,15 +600,27 @@ string handleRequest(
     // POST /api/routes/fastest
     if (method == "POST" && path == "/api/routes/fastest")
     {
-        string source = getJsonString(body, "source");
-        string destination = getJsonString(body, "destination");
+        string rawSource = getJsonString(body, "source");
+        string rawDestination = getJsonString(body, "destination");
 
-        if (source.empty() || destination.empty())
+        if (rawSource.empty() || rawDestination.empty())
         {
             return httpResponse(
                 400,
                 "{\"error\":\"source and destination are required\"}",
                 "Bad Request"
+            );
+        }
+
+        string source = canonicalCity(rawSource);
+        string destination = canonicalCity(rawDestination);
+
+        if (source.empty() || destination.empty())
+        {
+            return httpResponse(
+                404,
+                "{\"error\":\"Unknown city. Valid cities: Karachi, Hyderabad, Sukkur, Quetta, Multan, Lahore, Islamabad, Peshawar\"}",
+                "Not Found"
             );
         }
 
@@ -540,13 +746,13 @@ string handleRequest(
     // POST /api/blockchain/register (or /api/blockchain/events)
     if (method == "POST" && (path == "/api/blockchain/register" || path == "/api/blockchain/events"))
     {
-        double idValue = 0;
-        getJsonNumber(body, "shipmentID", idValue);
+        int shipmentID = 0;
         string eventType = getJsonString(body, "eventType");
         string location = getJsonString(body, "location");
         string status = getJsonString(body, "status");
 
-        if (idValue <= 0 || eventType.empty())
+        if (!getJsonPositiveInt(body, "shipmentID", shipmentID) ||
+            !cleanTextField(eventType))
         {
             return httpResponse(
                 400,
@@ -555,14 +761,28 @@ string handleRequest(
             );
         }
 
+        if (manager.searchShipment(shipmentID) == nullptr)
+        {
+            return httpResponse(
+                404,
+                "{\"error\":\"Shipment not found; create it before registering events\"}",
+                "Not Found"
+            );
+        }
+
         if (location.empty())
             location = "Warehouse Hub";
+        else if (!cleanTextField(location))
+            return httpResponse(400, "{\"error\":\"Invalid location\"}", "Bad Request");
+
         if (status.empty())
             status = eventType;
+        else if (!cleanTextField(status))
+            return httpResponse(400, "{\"error\":\"Invalid status\"}", "Bad Request");
 
         // A manual registration always seals its own block, so the explorer
         // shows a new block for every "Record & Register Block" action.
-        if (!manager.recordEvent(static_cast<int>(idValue), eventType, location, status, true))
+        if (!manager.recordEvent(shipmentID, eventType, location, status, true))
         {
             return httpResponse(
                 500,
