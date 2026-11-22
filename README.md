@@ -497,20 +497,23 @@ Environment variables (all optional):
 | `ROUTEX_DATA_FILE` | `data/shipments.csv` | Shipment CSV file |
 | `ROUTEX_FRONTEND_DIR` | `frontend` | Website folder; if it has no `index.html`, only the API is served |
 
-## Deployment (Render, free, no card)
+## Deployment (Hugging Face Spaces, free, no card)
 
-The repository contains a `Dockerfile` that builds the C++ server, runs all tests, and packages the API and the website together.
+The app (API and website together) runs on a free Hugging Face Docker Space. The Space downloads this repository's `main` branch when it builds, compiles it, runs all tests, and starts the server.
 
-1. Sign up at https://render.com (GitHub login works; no card needed for the free plan).
-2. **New → Web Service → Public Git Repository**, paste `https://github.com/AhmedMustafa-0817/RouteX`, then pick the branch to deploy.
-3. Render detects the `Dockerfile`. Choose the **Free** instance type and set **Health Check Path** to `/api/health`.
-4. Click **Deploy**. When the build finishes, the app is live at `https://<service-name>.onrender.com` on any desktop or phone browser.
+1. Create a free account at https://huggingface.co/join (email only).
+2. Go to https://huggingface.co/new-space. Enter the name `routex`, choose **Docker → Blank** as the SDK, keep the free **CPU basic** hardware and **Public** visibility, then click **Create Space**.
+3. In the Space, open **Files**. Replace `README.md` with `deploy/huggingface/README.md` from this repository, and add a file named `Dockerfile` with the contents of `deploy/huggingface/Dockerfile`. Use **+ Contribute → Create a new file** or edit the file, paste, then **Commit**.
+4. The Space builds automatically (watch **Logs → Build**). When it shows **Running**, the app is live at `https://<username>-routex.hf.space` on any desktop or phone browser.
+
+To deploy new changes after they are merged into `main`: Space → **Settings → Factory rebuild**.
 
 Free-plan behaviour to know before a demo:
 
-* The service sleeps after 15 minutes without visitors; the first visit afterwards takes about a minute. Open the link a minute before presenting.
-* There is no persistent disk: every restart, sleep or redeploy starts again from `data/shipments.csv` in the repository, and the blockchain is rebuilt from it.
-* Deploying via a public repository URL does not auto-deploy on push; use **Manual Deploy → Deploy latest commit** after merging changes.
+* The Space sleeps after about 48 hours without visitors; opening it wakes it up again in a minute or two.
+* There is no persistent disk: every restart, sleep or rebuild starts again from `data/shipments.csv` in the repository, and the blockchain is rebuilt from it.
+
+The root `Dockerfile` builds the same image from a local checkout and works on any Docker host (`docker build -t routex . && docker run -p 8090:8090 routex`); on hosts that set `PORT`, the server uses it.
 
 ---
 
