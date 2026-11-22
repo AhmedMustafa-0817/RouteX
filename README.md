@@ -487,7 +487,30 @@ To run the browser application, start the API from the repository root:
 ./build/routex_api
 ```
 
-Keep that terminal open, then serve the `frontend/` directory with VS Code Live Server (or another local static server) and open `frontend/index.html`. The API uses `data/shipments.csv` relative to the repository root and listens on `http://127.0.0.1:8090`.
+Keep that terminal open and open **http://127.0.0.1:8090** in a browser: the API also serves the website, so no separate static server is needed. (VS Code Live Server still works too: `frontend/js/config.js` points those pages at the local API.) The API uses `data/shipments.csv` relative to the repository root.
+
+Environment variables (all optional):
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `8090` | Port to listen on (a command-line argument overrides it) |
+| `ROUTEX_DATA_FILE` | `data/shipments.csv` | Shipment CSV file |
+| `ROUTEX_FRONTEND_DIR` | `frontend` | Website folder; if it has no `index.html`, only the API is served |
+
+## Deployment (Render, free, no card)
+
+The repository contains a `Dockerfile` that builds the C++ server, runs all tests, and packages the API and the website together.
+
+1. Sign up at https://render.com (GitHub login works; no card needed for the free plan).
+2. **New → Web Service → Public Git Repository**, paste `https://github.com/AhmedMustafa-0817/RouteX`, then pick the branch to deploy.
+3. Render detects the `Dockerfile`. Choose the **Free** instance type and set **Health Check Path** to `/api/health`.
+4. Click **Deploy**. When the build finishes, the app is live at `https://<service-name>.onrender.com` on any desktop or phone browser.
+
+Free-plan behaviour to know before a demo:
+
+* The service sleeps after 15 minutes without visitors; the first visit afterwards takes about a minute. Open the link a minute before presenting.
+* There is no persistent disk: every restart, sleep or redeploy starts again from `data/shipments.csv` in the repository, and the blockchain is rebuilt from it.
+* Deploying via a public repository URL does not auto-deploy on push; use **Manual Deploy → Deploy latest commit** after merging changes.
 
 ---
 

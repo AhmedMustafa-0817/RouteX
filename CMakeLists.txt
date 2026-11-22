@@ -61,6 +61,10 @@ add_executable(routex_api
 
 target_include_directories(routex_api PRIVATE backend/include)
 
+# The API server handles each request on its own std::thread.
+find_package(Threads REQUIRED)
+target_link_libraries(routex_api PRIVATE Threads::Threads)
+
 if(WIN32)
     target_link_libraries(routex_api PRIVATE ws2_32)
 endif()

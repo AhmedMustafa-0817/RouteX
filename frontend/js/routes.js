@@ -127,7 +127,7 @@
   }
 
   async function checkApi() {
-    try { await api('/'); setApiState(true); } catch (error) { setApiState(false, error.message); }
+    try { await api('/api/health'); setApiState(true); } catch (error) { setApiState(false, error.message); }
     try {
       const result = await api('/api/shipments');
       const count = document.getElementById('navShipmentCount');

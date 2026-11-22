@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+.idea
+.playwright-mcp
+build
+cmake-build-*
+out
+*.exe
+*.o
+*.obj
+*.tmp
+*.log
+data/demo_shipments.csv
