@@ -33,3 +33,6 @@ install_manifest.txt
 
 # Logs
 *.log
+
+# Static WebAssembly build output (web/build.sh)
+web/dist/

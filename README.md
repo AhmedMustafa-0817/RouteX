@@ -497,9 +497,15 @@ Environment variables (all optional):
 | `ROUTEX_DATA_FILE` | `data/shipments.csv` | Shipment CSV file |
 | `ROUTEX_FRONTEND_DIR` | `frontend` | Website folder; if it has no `index.html`, only the API is served |
 
-## Deployment (Hugging Face Spaces, free, no card)
+## Deployment
 
-The app (API and website together) runs on a free Hugging Face Docker Space. The Space downloads this repository's `main` branch when it builds, compiles it, runs all tests, and starts the server.
+### Free, no card: static website with C++ in the browser
+
+The recommended free deployment compiles the C++ backend to WebAssembly so the whole app runs in the visitor's browser and can be hosted as a static site (Hugging Face static Space, Vercel, Netlify). See **[web/README.md](web/README.md)** for the build and upload steps.
+
+### Docker hosting (paid Hugging Face Docker Space or any Docker host)
+
+The app (API and website together) can also run as a Docker container. On a Hugging Face Docker Space (now a paid option), the Space downloads this repository's `main` branch when it builds, compiles it, runs all tests, and starts the server.
 
 1. Create a free account at https://huggingface.co/join (email only).
 2. Go to https://huggingface.co/new-space. Enter the name `routex`, choose **Docker → Blank** as the SDK, keep the free **CPU basic** hardware and **Public** visibility, then click **Create Space**.
