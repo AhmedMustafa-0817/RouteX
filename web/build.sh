@@ -3,6 +3,10 @@
 # plus the frontend pages. Output: web/dist/ (upload its contents to any
 # static host). Requires the Emscripten SDK (em++); see web/README.md.
 #
+# The output is flat (every file at the top level, no css/ or js/ folders)
+# because browser upload forms, such as the Hugging Face one, often drop
+# folders and put every file at the root.
+#
 #   source ~/emsdk/emsdk_env.sh
 #   bash web/build.sh
 set -euo pipefail
@@ -34,7 +38,7 @@ SOURCES=(
 
 cd "$ROOT"
 rm -rf "$OUT"
-mkdir -p "$OUT/js"
+mkdir -p "$OUT"
 
 # Demo data goes into the WebAssembly virtual file system at /data.
 mkdir -p "$WORK/data"
@@ -52,26 +56,31 @@ em++ -std=c++17 -O2 -Wall -Wextra \
   -sSTACK_SIZE=1MB \
   -sEXPORTED_FUNCTIONS=_routex_init,_routex_request \
   -sEXPORTED_RUNTIME_METHODS=ccall,FS \
-  -o "$OUT/js/routex.js"
+  -o "$OUT/routex.js"
 
-echo "Copying frontend..."
-cp -r frontend/. "$OUT/"
-cp web/engine.js "$OUT/js/engine.js"
+echo "Copying frontend (flat layout)..."
+cp frontend/*.html "$OUT/"
+cp frontend/css/*.css "$OUT/"
+cp frontend/js/*.js "$OUT/"
+cp web/engine.js "$OUT/engine.js"
 
 # No API server in the static build: the engine runs in the page.
-cat > "$OUT/js/config.js" <<'EOF'
-// Static WebAssembly build: the C++ backend runs in this page (js/engine.js).
+cat > "$OUT/config.js" <<'EOF'
+// Static WebAssembly build: the C++ backend runs in this page (engine.js).
 window.ROUTEX_API_BASE = window.location.origin;
 EOF
 
-# Load the engine before app.js on every page (deferred scripts run in order).
 for page in "$OUT"/*.html; do
-  sed -i 's#<script defer src="js/config.js"></script>#<script defer src="js/config.js"></script>\n  <script defer src="js/routex.js"></script>\n  <script defer src="js/engine.js"></script>#' "$page"
-  grep -q 'js/engine.js' "$page" || { echo "Could not add the engine to $page" >&2; exit 1; }
+  # Flat layout: css/style.css -> style.css, js/app.js -> app.js.
+  sed -i -e 's#href="css/#href="#g' -e 's#src="js/#src="#g' "$page"
+  # Load the engine before app.js (deferred scripts run in order).
+  sed -i 's#<script defer src="config.js"></script>#<script defer src="config.js"></script>\n  <script defer src="routex.js"></script>\n  <script defer src="engine.js"></script>#' "$page"
+  grep -q 'src="engine.js"' "$page" || { echo "Could not add the engine to $page" >&2; exit 1; }
+  if grep -qE '(href|src)="(css|js)/' "$page"; then echo "Folder path left in $page" >&2; exit 1; fi
 done
 
 # Hugging Face static Space settings (harmless on other hosts).
 cp web/space-README.md "$OUT/README.md"
 
 echo "Built $(du -sh "$OUT" | cut -f1) into web/dist:"
-ls -1 "$OUT" "$OUT/js"
+ls -1 "$OUT"

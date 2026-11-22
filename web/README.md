@@ -48,14 +48,16 @@ python3 -m http.server 8000 --directory web/dist   # open http://127.0.0.1:8000
 
 1. Create a Space at https://huggingface.co/new-space with **SDK: Static**,
    **Template: Blank**, free hardware, **Public**.
-2. **Files → + Contribute → Upload files**, drag in **everything inside**
-   `web/dist/` (the `.html` files, `README.md`, and the `css/` and `js/`
-   folders), then **Commit**. Uploading `README.md` replaces the default
-   one with the Space settings (`sdk: static`).
+2. **Files → + Contribute → Upload files**. Open `web/dist/`, select
+   **all files** (Ctrl+A), drag them in, then **Commit**. The build is flat
+   (no folders) because the upload form drops folders. Uploading
+   `README.md` replaces the default one with the Space settings
+   (`sdk: static`).
 3. The site is live at `https://<username>-<space>.static.hf.space`, and
    also on the Space page.
 
-To update: run `web/build.sh` again and upload the changed files
-(usually `js/routex.js`, `js/routex.wasm` and any edited pages).
+To update: run `web/build.sh` again and upload the changed files. Usually
+these are `routex.js`, `routex.wasm` and any edited pages; uploading
+everything again is also fine.
 
 `web/dist/` is a build output and is not committed to git.
